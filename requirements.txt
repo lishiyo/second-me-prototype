@@ -1,0 +1,30 @@
+# Core requirements
+fastapi>=0.115.0
+uvicorn>=0.34.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.9
+
+# Storage and database
+boto3>=1.37.0
+weaviate-client>=4.13.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+alembic>=1.15.0
+
+# Background tasks
+redis>=5.0.0
+rq>=1.16.0
+
+# Modal
+modal>=0.56.0
+
+# OpenAI
+openai>=1.0.0
+
+# Data processing
+numpy>=1.20.0
+
+# Testing and development
+pytest>=7.0.0
+httpx>=0.25.0 

@@ -260,9 +260,10 @@ tenant/1/                              # User ID 1 (only user for MVP)
 
 ### Weaviate Schema
 
+We are using the Weaviate v4 python client with multi-tenancy.
+
 ```
 TenantChunk {
-  tenant_id: String              # User ID
   document_id: String            # Source document ID
   s3_path: String                # Direct path to chunk file in Wasabi
   metadata: Object {             # Additional metadata
@@ -357,14 +358,6 @@ CREATE TABLE chat_sessions (
 - Caches models for improved performance
 - Stores new conversations as chat files in Wasabi for future training
 
-## Benefits of Separate Chunk Storage
-
-1. **Improved Retrieval Performance**: Direct access to pre-processed chunks eliminates the need for byte range requests and extraction from original documents
-2. **Simplified Code**: No need to handle byte range extraction in the retrieval process
-3. **Enhanced Reliability**: If source documents become corrupted, chunks remain available
-4. **Better Caching**: Individual chunks can be efficiently cached
-5. **Reduced Processing During Inference**: Chunks are already preprocessed and ready for use
-6. **Storage Efficiency in Weaviate**: By storing only embeddings and pointers (not chunk text) in Weaviate, we optimize vector database usage
 
 ## Deployment Considerations
 
@@ -379,6 +372,7 @@ CREATE TABLE chat_sessions (
 The chat storage approach follows a file-based system that integrates with the training pipeline:
 
 ### Chat Object Structure
+
 Conversations are stored as structured objects based on the Chat class from the lpm_kernel:
 
 ```python
@@ -430,13 +424,13 @@ class UserInfo:
         )
 ```
 
-This approach allows the digital twin to learn from conversations as if they were memories, creating a more personalized experience. 
+This approach allows the digital twin to learn from conversations as if they were memories, creating a more personalized experience.
 
 ### Important Considerations for Training Files
 
-Be careful with mapping training process files to the Wasabi schema, since the training process creates multiple different processed files. 
+Be careful with mapping training process files to the Wasabi schema, since the training process creates multiple different processed files.
 
-The CURRENT training process in the lpm_kernel creates several different types of processed files:
+For example, for chat histories, the CURRENT training process in the `lpm_kernel` creates several different types of processed files:
 
 1. **JSON Files**: Initial storage of structured chat data
    - Raw JSON in `L2/data_pipeline/raw_data/`
