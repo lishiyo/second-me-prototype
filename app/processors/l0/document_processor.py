@@ -1,6 +1,5 @@
-import logging
 import os
-import uuid
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Union
 
 from app.processors.l0.models import (
@@ -30,35 +29,77 @@ class DocumentProcessor:
     5. Storage coordination
     """
     
+    # Default tenant ID for MVP
+    DEFAULT_TENANT_ID = "1"
+    
     def __init__(self, 
-                 storage_provider: Any,  # Should be a storage interface
-                 vector_db_provider: Any,  # Should be a vector DB interface
+                 storage_provider: Any,  # BlobStore
+                 vector_db_provider: Any,  # VectorDB
+                 rel_db_provider: Any,  # RelationalDB
                  openai_api_key: Optional[str] = None,
                  chunking_strategy: str = "paragraph",
                  embedding_model: str = "text-embedding-3-small",
-                 analysis_model: str = "gpt-3.5-turbo"):
+                 analysis_model: str = "gpt-4o-mini",
+                 user_id: str = "1"):  # Default user_id for MVP
         """
         Initialize the document processor with required components.
         
         Args:
-            storage_provider: Provider for storing documents and chunks
-            vector_db_provider: Provider for storing embeddings
+            storage_provider: Provider for storing documents and chunks (BlobStore)
+            vector_db_provider: Provider for storing embeddings (VectorDB)
+            rel_db_provider: Provider for storing structured data (RelationalDB)
             openai_api_key: OpenAI API key
             chunking_strategy: Strategy for chunking ("paragraph" or "fixed")
             embedding_model: OpenAI embedding model name
             analysis_model: OpenAI analysis model name
+            user_id: User ID (defaults to "1" for MVP)
         """
         self.storage_provider = storage_provider
         self.vector_db_provider = vector_db_provider
+        self.rel_db_provider = rel_db_provider
         self.openai_api_key = openai_api_key or os.environ.get("OPENAI_API_KEY")
+        self.user_id = user_id
+        
+        # For MVP, warn if user_id is not the default since we'll use DEFAULT_TENANT_ID for vector DB
+        if self.user_id != self.DEFAULT_TENANT_ID:
+            logger.warning(f"Using non-default user_id '{user_id}' for storage paths, but vector DB operations will use tenant_id='{self.DEFAULT_TENANT_ID}' for MVP")
+        
+        # Ensure default tenant exists in vector database
+        try:
+            self._ensure_tenant_exists(self.DEFAULT_TENANT_ID)
+        except Exception as e:
+            logger.warning(f"Could not verify tenant '{self.DEFAULT_TENANT_ID}' during initialization. Will try again when processing: {e}")
         
         # Initialize component classes
         self.content_extractor = ContentExtractor()
-        self.chunker = Chunker(max_chunk_size=2000, min_chunk_size=100, overlap=50)
+        self.chunker = Chunker(max_chunk_size=1000, min_chunk_size=100, overlap=50)
         self.document_analyzer = DocumentAnalyzer(api_key=self.openai_api_key, model=analysis_model)
         self.embedding_generator = EmbeddingGenerator(api_key=self.openai_api_key, model=embedding_model)
         
         self.chunking_strategy = chunking_strategy
+    
+    def _ensure_tenant_exists(self, tenant_id: str) -> None:
+        """
+        Ensure that the specified tenant exists in the vector database.
+        Creates the tenant if it doesn't exist.
+        
+        Args:
+            tenant_id: Tenant ID to check/create
+        """
+        try:
+            # Check if the tenant already exists
+            tenants = self.vector_db_provider.list_tenants()
+            
+            if tenant_id not in tenants:
+                logger.info(f"Creating tenant {tenant_id} in vector database")
+                success = self.vector_db_provider.create_tenant(tenant_id)
+                if success:
+                    logger.info(f"Successfully created tenant {tenant_id}")
+                else:
+                    logger.warning(f"Failed to create tenant {tenant_id}")
+        except Exception as e:
+            logger.error(f"Error ensuring tenant {tenant_id} exists: {e}")
+            raise
     
     @retry(max_retries=2)
     def process_document(self, file_info: FileInfo) -> ProcessingResult:
@@ -77,10 +118,16 @@ class DocumentProcessor:
         # Create in-progress result
         result = ProcessingResult.in_progress(document_id)
         
+        # Get DB session
+        db_session = self.rel_db_provider.get_db_session()
+        
         try:
-            # Step 1: Upload original document to storage
-            logger.info(f"Uploading original document to storage: {file_info.filename}")
-            self._store_original_document(file_info)
+            # Update document status to "processing" in the database
+            self._update_document_status(db_session, document_id, ProcessingStatus.PROCESSING)
+            
+            # Step 1: Upload original document to storage (Wasabi)
+            s3_path = self._store_original_document(file_info)
+            logger.info(f"Uploading original document to storage: {file_info.filename} to {s3_path}")
             
             # Step 2: Extract content
             logger.info(f"Extracting content from document: {file_info.filename}")
@@ -102,6 +149,18 @@ class DocumentProcessor:
             logger.info(f"Storing {len(chunks_with_embeddings)} chunks and embeddings")
             stored_chunks = self._store_chunks_and_embeddings(chunks_with_embeddings, file_info)
             
+            # Step 7: Store insights in S3
+            logger.info(f"Storing document insights")
+            self._store_insights(document_id, insights)
+            
+            # Step 8: Update document status to "completed" in the database
+            self._update_document_status(
+                db_session, 
+                document_id, 
+                ProcessingStatus.COMPLETED, 
+                len(stored_chunks)
+            )
+            
             # Create success result
             result = ProcessingResult.success(
                 document_id=document_id,
@@ -110,11 +169,66 @@ class DocumentProcessor:
             )
             
             logger.info(f"Successfully processed document {document_id}: {file_info.filename}")
+            db_session.commit()
             return result
             
         except Exception as e:
             logger.error(f"Error processing document {document_id}: {str(e)}")
+            db_session.rollback()
+            
+            # Update document status to "failed" in the database
+            try:
+                self._update_document_status(
+                    db_session, 
+                    document_id, 
+                    ProcessingStatus.FAILED,
+                    error_message=str(e)
+                )
+                db_session.commit()
+            except:
+                logger.error("Failed to update document status to failed")
+                
             return ProcessingResult.failure(document_id, str(e))
+        finally:
+            # Close the database session
+            self.rel_db_provider.close_db_session(db_session)
+    
+    def _update_document_status(self, 
+                               db_session, 
+                               document_id: str, 
+                               status: ProcessingStatus,
+                               chunk_count: int = 0,
+                               error_message: Optional[str] = None) -> None:
+        """
+        Update the document processing status in the database.
+        
+        Args:
+            db_session: Database session
+            document_id: Document ID
+            status: New processing status
+            chunk_count: Number of chunks (for completed documents)
+            error_message: Error message (for failed documents)
+        """
+        # Get status as string
+        status_str = status.value
+        
+        if status == ProcessingStatus.COMPLETED:
+            # Update document as processed with chunk count
+            self.rel_db_provider.update_document_processed(
+                session=db_session,
+                document_id=document_id,
+                processed=True,
+                chunk_count=chunk_count
+            )
+        elif status == ProcessingStatus.FAILED:
+            # If we have a training job table, we could log errors there
+            # For now, just mark as not processed
+            self.rel_db_provider.update_document_processed(
+                session=db_session,
+                document_id=document_id,
+                processed=False,
+                chunk_count=0
+            )
     
     def _chunk_content(self, content: str, document_id: str) -> List[ChunkInfo]:
         """
@@ -131,10 +245,26 @@ class DocumentProcessor:
             "document_id": document_id
         }
         
+        # Get chunks as dictionaries from the chunker
         if self.chunking_strategy == "paragraph":
-            return self.chunker.chunk_by_paragraph(content, metadata)
+            chunk_dicts = self.chunker.chunk_by_paragraph(content, document_id, metadata=metadata)
         else:
-            return self.chunker.chunk_by_fixed_size(content, metadata)
+            chunk_dicts = self.chunker.chunk_by_fixed_size(content, document_id, metadata=metadata)
+        
+        # Convert dictionaries to ChunkInfo objects
+        chunks = []
+        for chunk_dict in chunk_dicts:
+            chunk = ChunkInfo(
+                chunk_id=chunk_dict.get("chunk_id", ""),
+                document_id=document_id,
+                chunk_index=chunk_dict.get("chunk_index", 0),
+                content=chunk_dict.get("content", ""),
+                s3_path="",  # Will be set later
+                metadata=chunk_dict.get("metadata", {})
+            )
+            chunks.append(chunk)
+        
+        return chunks
     
     def _store_original_document(self, file_info: FileInfo) -> str:
         """
@@ -146,9 +276,26 @@ class DocumentProcessor:
         Returns:
             S3 path where the document was stored
         """
-        # This should call the storage provider to store the document
-        # Implement based on your storage provider interface
-        return self.storage_provider.store_document(file_info)
+        # Create S3 key using tenant ID (user_id) and filename
+        s3_key = f"tenant/{self.user_id}/raw/{file_info.document_id}_{file_info.filename}"
+        
+        # Create metadata for the file
+        metadata = {
+            "document_id": str(file_info.document_id),
+            "content_type": file_info.content_type,
+            "uploaded_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Store the document using BlobStore
+        if file_info.content:
+            # If content is provided as bytes
+            s3_uri = self.storage_provider.put_object(s3_key, file_info.content, metadata)
+        else:
+            # If no content is provided, we assume it's a reference to a local file
+            s3_uri = self.storage_provider.put_file(s3_key, file_info.s3_path, metadata)
+        
+        # Return the S3 path
+        return s3_uri
     
     def _store_chunks_and_embeddings(self, chunks: List[ChunkInfo], file_info: FileInfo) -> List[ChunkInfo]:
         """
@@ -163,32 +310,118 @@ class DocumentProcessor:
         """
         # Store each chunk as a separate file
         for i, chunk in enumerate(chunks):
-            # Generate a unique ID for the chunk if not present
-            if not hasattr(chunk, 'chunk_id') or not chunk.chunk_id:
-                chunk.chunk_id = f"{file_info.document_id}_chunk_{i}"
-            
-            # Generate S3 path for the chunk
-            chunk.s3_path = f"chunks/{file_info.document_id}/chunk_{i}.txt"
-            
-            # Set the document_id and chunk_index
-            chunk.document_id = file_info.document_id
-            chunk.chunk_index = i
-            
-            # Add metadata if not present
-            if not chunk.metadata:
-                chunk.metadata = {}
-            
-            # Add additional metadata
-            chunk.metadata.update({
-                "filename": file_info.filename,
-                "content_type": file_info.content_type,
-                "chunk_index": i
-            })
-            
-            # Store the chunk content in storage provider
-            self.storage_provider.store_chunk(chunk)
-            
-        # Store all embeddings in vector DB
-        self.vector_db_provider.store_embeddings(chunks)
+            try:
+                # Add debugging information
+                logger.info(f"Processing chunk {i} with content type: {type(chunk.content)}")
+                
+                # Generate a unique ID for the chunk if not present
+                if not hasattr(chunk, 'chunk_id') or not chunk.chunk_id:
+                    chunk.chunk_id = f"{file_info.document_id}_chunk_{i}"
+                
+                # Generate S3 path for the chunk
+                s3_key = f"tenant/{self.user_id}/chunks/{file_info.document_id}/chunk_{i}.txt"
+                chunk.s3_path = s3_key
+                
+                # Set the document_id and chunk_index
+                chunk.document_id = file_info.document_id
+                chunk.chunk_index = i
+                
+                # Add metadata if not present
+                if not chunk.metadata:
+                    chunk.metadata = {}
+                
+                # Add additional metadata
+                chunk.metadata.update({
+                    "filename": file_info.filename,
+                    "content_type": file_info.content_type,
+                    "chunk_index": i,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+                
+                # Ensure content is a string before encoding
+                if chunk.content is None:
+                    logger.warning(f"Chunk {i} has None content")
+                    content_str = ""
+                elif isinstance(chunk.content, (int, float, bool)):
+                    logger.warning(f"Chunk {i} has non-string content: {type(chunk.content)}")
+                    content_str = str(chunk.content)
+                elif isinstance(chunk.content, str):
+                    content_str = chunk.content
+                else:
+                    logger.warning(f"Chunk {i} has unexpected content type: {type(chunk.content)}")
+                    content_str = str(chunk.content)
+                
+                # Store the chunk content in storage provider
+                logger.info(f"Storing chunk {i} content to S3 (length: {len(content_str)})")
+                
+                # Convert metadata values to strings to ensure compatibility with the storage provider
+                string_metadata = {}
+                if chunk.metadata:
+                    string_metadata = {k: str(v) for k, v in chunk.metadata.items()}
+                
+                self.storage_provider.put_object(
+                    s3_key,
+                    content_str.encode('utf-8'),
+                    string_metadata
+                )
+                
+                # Add the chunk to vector DB
+                if chunk.embedding:
+                    logger.info(f"Adding chunk {i} to vector DB (embedding dim: {len(chunk.embedding)})")
+                    
+                    # Make sure tenant exists before adding chunk
+                    tenant_id = self.DEFAULT_TENANT_ID  # Fixed tenant ID for MVP
+                    self._ensure_tenant_exists(tenant_id)
+                    
+                    # Add the chunk to vector DB
+                    self.vector_db_provider.add_chunk(
+                        tenant_id=tenant_id,  # Fixed tenant ID for MVP
+                        document_id=chunk.document_id,
+                        s3_path=chunk.s3_path,
+                        chunk_index=chunk.chunk_index,
+                        embedding=chunk.embedding,
+                        metadata=chunk.metadata
+                    )
+                else:
+                    logger.warning(f"Chunk {i} for document {file_info.document_id} has no embedding")
+            except Exception as e:
+                logger.error(f"Error processing chunk {i}: {str(e)}")
+                # logger.error(f"Chunk content type: {type(chunk.content)}")
+                # logger.error(f"Chunk content: {chunk.content}")
+                raise
         
         return chunks
+    
+    def _store_insights(self, document_id: str, insights: DocumentInsights) -> str:
+        """
+        Store document insights in the storage provider.
+        
+        Args:
+            document_id: Document ID
+            insights: Document insights
+            
+        Returns:
+            S3 path where insights were stored
+        """
+        import json
+        
+        # Create insights object
+        insights_dict = {
+            "title": insights.title,
+            "summary": insights.summary,
+            "keywords": insights.keywords,
+            "generated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Convert to JSON
+        insights_json = json.dumps(insights_dict, ensure_ascii=False, indent=2)
+        
+        # Store in S3
+        s3_key = f"tenant/{self.user_id}/metadata/{document_id}/insights.json"
+        s3_uri = self.storage_provider.put_object(
+            s3_key,
+            insights_json.encode('utf-8'),
+            {"document_id": str(document_id)}
+        )
+        
+        return s3_uri

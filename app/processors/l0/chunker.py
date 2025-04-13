@@ -14,7 +14,7 @@ class Chunker:
     """
     
     def __init__(self, 
-                 max_chunk_size: int = 2000, 
+                 max_chunk_size: int = 1000, 
                  min_chunk_size: int = 100,
                  overlap: int = 50):
         """
@@ -194,6 +194,11 @@ class Chunker:
         """
         # Generate chunk_id using prefix and index
         chunk_id = f"{chunk_id_prefix}{chunk_idx}" if chunk_id_prefix else str(chunk_idx)
+        
+        # Ensure content is a string
+        if not isinstance(content, str):
+            logger.warning(f"Non-string content detected in chunk {chunk_idx}: {type(content)}")
+            content = str(content) if content is not None else ""
         
         # Create a dictionary with all chunk information
         chunk_dict = {

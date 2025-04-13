@@ -280,7 +280,7 @@ TenantChunk {
 ```sql
 -- Users table (just user 1 for MVP)
 CREATE TABLE users (
-  id UUID PRIMARY KEY,
+  id STRING PRIMARY KEY,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 

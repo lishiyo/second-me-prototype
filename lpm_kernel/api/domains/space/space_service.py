@@ -3,7 +3,7 @@ Space service layer, handles all Space-related business logic
 """
 from typing import List, Optional
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import threading
 import os
 import requests
@@ -44,7 +44,7 @@ class SpaceService:
             objective=objective,
             host=host,
             participants=all_participants,
-            create_time=datetime.utcnow().isoformat(),
+            create_time=datetime.now(timezone.utc).isoformat(),
             status=1,  # Initial status
             messages=[],
             conclusion=None

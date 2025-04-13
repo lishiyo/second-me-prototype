@@ -8,7 +8,7 @@ import os
 import sys
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 import numpy as np
 
@@ -59,7 +59,7 @@ def test_blob_store():
     
     # Test metadata
     logger.info("Testing with metadata...")
-    metadata = {"test_key": "test_value", "timestamp": datetime.utcnow().isoformat()}
+    metadata = {"test_key": "test_value", "timestamp": datetime.now(timezone.utc).isoformat()}
     s3_uri_with_metadata = blob_store.put_object(test_key, test_content, metadata=metadata)
     retrieved_metadata = blob_store.get_metadata(test_key)
     logger.info(f"Retrieved metadata: {retrieved_metadata}")
@@ -138,7 +138,7 @@ def test_vector_db():
             "metadata": {
                 "filename": f"test_document_{i}.txt",
                 "content_type": "text/plain",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         }
         chunks_tenant_1.append(chunk)
@@ -167,7 +167,7 @@ def test_vector_db():
             "metadata": {
                 "filename": f"tenant2_document_{i}.txt",
                 "content_type": "text/plain",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         }
         chunks_tenant_2.append(chunk)

@@ -1,11 +1,11 @@
 import os
 import logging
 from typing import Dict, List, Any, Optional, Tuple, Union
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from sqlalchemy import create_engine, MetaData, Table, Column, String, DateTime
-from sqlalchemy import Integer, Boolean, Text, ForeignKey, text, UUID
+from sqlalchemy import Integer, Boolean, Text, ForeignKey, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -19,8 +19,8 @@ class User(Base):
     """User table model."""
     __tablename__ = "users"
     
-    id = Column(UUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    id = Column(String(36), primary_key=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now(timezone.utc))
     
     # Relationships
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
@@ -31,12 +31,12 @@ class Document(Base):
     """Document metadata table model."""
     __tablename__ = "documents"
     
-    id = Column(UUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(UUID, ForeignKey("users.id"), nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     filename = Column(Text, nullable=False)
     content_type = Column(Text, nullable=False)
     s3_path = Column(Text, nullable=False)
-    uploaded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    uploaded_at = Column(DateTime, nullable=False, default=datetime.now(timezone.utc))
     processed = Column(Boolean, default=False)
     chunk_count = Column(Integer, default=0)
     
@@ -47,8 +47,8 @@ class TrainingJob(Base):
     """Training job metadata table model."""
     __tablename__ = "training_jobs"
     
-    id = Column(UUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(UUID, ForeignKey("users.id"), nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     status = Column(String(20), nullable=False)  # 'queued', 'processing', 'completed', 'failed'
     attempt = Column(Integer, default=1)
     started_at = Column(DateTime)
@@ -63,12 +63,12 @@ class ChatSession(Base):
     """Chat session metadata table model."""
     __tablename__ = "chat_sessions"
     
-    id = Column(UUID, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(UUID, ForeignKey("users.id"), nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     title = Column(Text)
     summary = Column(Text)
     session_s3_path = Column(Text, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.now(timezone.utc))
     processed_for_training = Column(Boolean, default=False)
     
     # Relationships
@@ -150,6 +150,7 @@ class RelationalDB:
         try:
             user = User(id=user_id or str(uuid.uuid4()))
             session.add(user)
+            session.flush()  # Flush to get errors before commit
             session.commit()
             session.refresh(user)
             return user
@@ -364,12 +365,12 @@ class RelationalDB:
                                  status: str, 
                                  **kwargs) -> Optional[TrainingJob]:
         """
-        Update training job status.
+        Update a training job's status.
         
         Args:
             session: Database session
-            job_id: Job ID to update
-            status: New status ('queued', 'processing', 'completed', 'failed')
+            job_id: Training job ID
+            status: New status value ('queued', 'processing', 'completed', 'failed')
             **kwargs: Additional fields to update (lora_path, error, etc.)
             
         Returns:
@@ -377,22 +378,24 @@ class RelationalDB:
         """
         try:
             job = session.query(TrainingJob).filter(TrainingJob.id == job_id).first()
-            if job:
-                job.status = status
+            if not job:
+                return None
                 
-                # Update start/complete times based on status
-                if status == "processing" and not job.started_at:
-                    job.started_at = datetime.utcnow()
-                elif status in ["completed", "failed"] and not job.completed_at:
-                    job.completed_at = datetime.utcnow()
-                
-                # Update other fields
-                for key, value in kwargs.items():
-                    if hasattr(job, key):
-                        setattr(job, key, value)
-                
-                session.commit()
-                session.refresh(job)
+            job.status = status
+            
+            # Update timestamps based on status
+            if status == 'processing':
+                job.started_at = datetime.now(timezone.utc)
+            elif status in ['completed', 'failed']:
+                job.completed_at = datetime.now(timezone.utc)
+            
+            # Update other fields from kwargs
+            for key, value in kwargs.items():
+                if hasattr(job, key):
+                    setattr(job, key, value)
+            
+            session.commit()
+            session.refresh(job)
             return job
         except SQLAlchemyError as e:
             session.rollback()

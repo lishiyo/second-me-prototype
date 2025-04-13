@@ -65,8 +65,17 @@ class EmbeddingGenerator:
         for i in range(0, len(chunks), self.batch_size):
             batch = chunks[i:i+self.batch_size]
             
-            # Extract texts from chunks
-            texts = [chunk.content for chunk in batch]
+            # Extract texts from chunks, ensuring they are strings
+            texts = []
+            for chunk in batch:
+                if not hasattr(chunk, 'content') or chunk.content is None:
+                    logger.warning(f"Chunk missing content attribute or has None content")
+                    texts.append("")
+                elif not isinstance(chunk.content, str):
+                    logger.warning(f"Non-string content found in chunk: {type(chunk.content)}")
+                    texts.append(str(chunk.content))
+                else:
+                    texts.append(chunk.content)
             
             # Get embeddings for the batch
             response = self._get_embeddings(texts)
