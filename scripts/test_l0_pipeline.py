@@ -30,8 +30,14 @@ from app.providers.rel_db import RelationalDB
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True  # Override any existing configuration
 )
+
+# Prevent propagation from app loggers to avoid duplicate logs
+for logger_name in logging.Logger.manager.loggerDict:
+    if logger_name.startswith('app.'):
+        logging.getLogger(logger_name).propagate = False
 
 logger = logging.getLogger(__name__)
 
@@ -144,14 +150,13 @@ def main():
         user_id = DocumentProcessor.DEFAULT_TENANT_ID
         logger.info(f"Using user_id: {user_id}")
         
-        # Create user in database
+        # Get or create user in database
         db_session = rel_db.get_db_session()
         try:
-            user = rel_db.create_user(db_session, user_id=user_id)
-            db_session.commit()
-            logger.info(f"Created user with ID: {user.id}")
+            user = rel_db.get_or_create_user(db_session, user_id=user_id)
+            logger.info(f"Using user with ID: {user.id}")
         except Exception as e:
-            logger.error(f"Error creating user: {e}")
+            logger.error(f"Error getting or creating user: {e}")
             db_session.rollback()
             raise
         finally:

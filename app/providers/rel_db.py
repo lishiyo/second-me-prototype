@@ -176,6 +176,38 @@ class RelationalDB:
             logger.error(f"Error getting user {user_id}: {e}")
             raise
     
+    def get_or_create_user(self, session: Session, user_id: str) -> User:
+        """
+        Get an existing user by ID or create a new one if it doesn't exist.
+        
+        Args:
+            session: Database session
+            user_id: User ID to retrieve or create
+            
+        Returns:
+            User object
+        """
+        try:
+            # First try to get the user
+            user = session.query(User).filter(User.id == user_id).first()
+            
+            # If the user doesn't exist, create a new one
+            if not user:
+                logger.info(f"User {user_id} not found, creating new user")
+                user = User(id=user_id)
+                session.add(user)
+                session.flush()  # Flush to get errors before commit
+                session.commit()
+                session.refresh(user)
+            else:
+                logger.info(f"Found existing user with ID: {user_id}")
+                
+            return user
+        except SQLAlchemyError as e:
+            session.rollback()
+            logger.error(f"Error getting or creating user: {e}")
+            raise
+    
     # Document methods
     def create_document(self, 
                       session: Session, 

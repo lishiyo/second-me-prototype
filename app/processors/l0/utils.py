@@ -106,7 +106,7 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
-    # Add console handler if not already present
+    # Only add handler if not already present
     if not logger.handlers:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
@@ -115,6 +115,9 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
         )
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
+        
+        # Disable propagation to avoid duplicate logs
+        logger.propagate = False
     
     return logger
 
