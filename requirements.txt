@@ -24,7 +24,15 @@ openai>=1.0.0
 
 # Data processing
 numpy>=1.20.0
+tiktoken>=0.5.0               # For tokenization in chunking
+PyPDF2>=3.0.0                 # For PDF extraction
+python-docx>=0.8.11           # For DOCX extraction
+python-pptx>=0.6.21           # For PPTX extraction
+beautifulsoup4>=4.12.0        # For HTML extraction
+lxml>=4.9.3                   # Required by BeautifulSoup
 
 # Testing and development
 pytest>=7.0.0
-httpx>=0.25.0 
+httpx>=0.25.0
+pytest-mock>=3.10.0           # For mocking in tests
+pytest-asyncio>=0.21.0        # For testing async code 
