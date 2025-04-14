@@ -103,3 +103,30 @@ And we're now prepared to implement the core processing components:
 ### Database/Model State
 - No changes to database state yet
 - Data models are ready for use by processing components 
+
+## 2025-04-13 18:15:42 PDT
+
+### Section Being Implemented
+We're fixing and improving the L0 processing pipeline tests, particularly addressing model issues in the document processor module. We're aligning the model implementation with its usage to ensure the pipeline works correctly.
+
+### What's Working
+- Refactored document analysis model into two separate models:
+  - DocumentInsight for first-stage deep insights
+  - DocumentSummary for second-stage summaries and keywords 
+- ChunkInfo model now includes metadata field to match how it's used in document_processor.py
+- Fixed tests to mock the chunker correctly, returning dictionaries that are then converted to ChunkInfo
+- Test pipeline correctly processes real documents with the new model structure
+- Document insights and summary extraction are fully functional
+
+### What's Broken
+- No current breakage after fixes
+
+### Current Blockers
+- None
+
+### Database/Model State
+- Models improved for better alignment with implementation:
+  - ChunkInfo with metadata support
+  - DocumentInsight for deep document analysis
+  - DocumentSummary for easier consumption 
+- Test data model represents real-world documents 

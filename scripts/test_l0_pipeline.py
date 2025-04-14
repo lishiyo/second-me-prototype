@@ -190,10 +190,16 @@ def main():
             logger.info(f"Document ID: {result.document_id}")
             logger.info(f"Chunk count: {result.chunk_count}")
             
-            if result.insights:
-                logger.info(f"Title: {result.insights.title}")
-                logger.info(f"Summary: {result.insights.summary}")
-                logger.info(f"Keywords: {', '.join(result.insights.keywords)}")
+            # Print insight information
+            if result.insight:
+                logger.info(f"Title: {result.insight.title}")
+                logger.info(f"Insight: {result.insight.insight}")
+            
+            # Print summary information
+            if result.summary:
+                logger.info(f"Title: {result.summary.title}")
+                logger.info(f"Summary: {result.summary.summary}")
+                logger.info(f"Keywords: {', '.join(result.summary.keywords)}")
             
             if result.status == ProcessingStatus.FAILED:
                 logger.error(f"Error: {result.error}")
