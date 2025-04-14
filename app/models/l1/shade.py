@@ -44,6 +44,7 @@ class Shade:
     """
     id: str
     name: str
+    user_id: str = ""
     summary: Optional[str] = None
     content: str = ""
     confidence: float = 0.0
@@ -51,19 +52,22 @@ class Shade:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    s3_path: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation"""
         return {
             "id": self.id,
             "name": self.name,
+            "user_id": self.user_id,
             "summary": self.summary,
             "content": self.content,
             "confidence": self.confidence,
             "source_clusters": self.source_clusters,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "s3_path": self.s3_path
         }
     
     @classmethod
@@ -80,13 +84,15 @@ class Shade:
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
+            user_id=data.get("user_id", ""),
             summary=data.get("summary"),
             content=data.get("content", ""),
             confidence=data.get("confidence", 0.0),
             source_clusters=data.get("source_clusters", []),
             created_at=created_at or datetime.now(),
             updated_at=updated_at or datetime.now(),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
+            s3_path=data.get("s3_path")
         )
 
 

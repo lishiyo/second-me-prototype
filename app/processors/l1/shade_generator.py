@@ -150,15 +150,22 @@ class ShadeGenerator:
             # Store shade data in Wasabi
             s3_path = self._store_shade_data(user_id, shade_data, cluster_notes)
             
+            # Create shade object - initialize with common attributes
+            shade_kwargs = {
+                "id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "name": shade_data.get("name", "Unknown Shade"),
+                "summary": shade_data.get("summary", ""),
+                "confidence": shade_data.get("confidence", 0.0),
+            }
+            
+            # Only add s3_path if the class accepts it (inspect the class's __init__ parameters)
+            import inspect
+            if 's3_path' in inspect.signature(L1Shade.__init__).parameters:
+                shade_kwargs["s3_path"] = s3_path
+            
             # Create shade object
-            shade = L1Shade(
-                id=str(uuid.uuid4()),
-                user_id=user_id,
-                name=shade_data.get("name", "Unknown Shade"),
-                summary=shade_data.get("summary", ""),
-                confidence=shade_data.get("confidence", 0.0),
-                s3_path=s3_path
-            )
+            shade = L1Shade(**shade_kwargs)
             
             logger.info(f"Generated shade: {shade.name} with confidence {shade.confidence}")
             return shade
@@ -213,6 +220,11 @@ class ShadeGenerator:
             
             # Store merged shades in Wasabi and create shade objects
             result_shades = []
+            
+            # Check if s3_path is used in the L1Shade model
+            import inspect
+            includes_s3_path = 's3_path' in inspect.signature(L1Shade.__init__).parameters
+            
             for shade_data in merged_shades_data:
                 s3_path = self._store_merged_shade_data(user_id, shade_data)
                 
@@ -222,10 +234,13 @@ class ShadeGenerator:
                     "name": shade_data.get("name", "Unknown Shade"),
                     "summary": shade_data.get("summary", ""),
                     "confidence": shade_data.get("confidence", 0.0),
-                    "s3_path": s3_path,
                     "created_at": datetime.now().isoformat(),
                     "updated_at": datetime.now().isoformat()
                 }
+                
+                # Only add s3_path if it's used in the model
+                if includes_s3_path:
+                    shade_dict["s3_path"] = s3_path
                 
                 result_shades.append(shade_dict)
             
@@ -385,7 +400,7 @@ class ShadeGenerator:
         s3_path = f"l1/shades/{user_id}/{shade_id}.json"
         
         # Store in Wasabi
-        self.wasabi_adapter.store_json(user_id, s3_path, complete_data)
+        self.wasabi_adapter.store_json(s3_path, complete_data)
         
         return s3_path
     
@@ -411,6 +426,6 @@ class ShadeGenerator:
         s3_path = f"l1/merged_shades/{user_id}/{shade_id}.json"
         
         # Store in Wasabi
-        self.wasabi_adapter.store_json(user_id, s3_path, complete_data)
+        self.wasabi_adapter.store_json(s3_path, complete_data)
         
         return s3_path 

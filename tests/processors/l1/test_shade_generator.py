@@ -167,12 +167,11 @@ def test_store_shade_data(shade_generator, sample_notes, mock_wasabi_adapter):
     call_args = mock_wasabi_adapter.store_json.call_args[0]
     
     # Check args to store_json
-    assert call_args[0] == "test_user"  # user_id
-    assert call_args[1] == result  # s3_path
-    assert "shade" in call_args[2]  # complete_data
-    assert call_args[2]["shade"] == shade_data
-    assert "notes" in call_args[2]
-    assert len(call_args[2]["notes"]) == 2
+    assert call_args[0] == result  # s3_path
+    assert "shade" in call_args[1]  # complete_data
+    assert call_args[1]["shade"] == shade_data
+    assert "notes" in call_args[1]
+    assert len(call_args[1]["notes"]) == 2
 
 
 def test_store_merged_shade_data(shade_generator, mock_wasabi_adapter):
@@ -194,7 +193,6 @@ def test_store_merged_shade_data(shade_generator, mock_wasabi_adapter):
     call_args = mock_wasabi_adapter.store_json.call_args[0]
     
     # Check args to store_json
-    assert call_args[0] == "test_user"  # user_id
-    assert call_args[1] == result  # s3_path
-    assert "shade" in call_args[2]  # complete_data
-    assert call_args[2]["shade"] == shade_data 
+    assert call_args[0] == result  # s3_path
+    assert "shade" in call_args[1]  # complete_data
+    assert call_args[1]["shade"] == shade_data 

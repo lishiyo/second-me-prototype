@@ -8,6 +8,11 @@ class Bio:
     """
     Represents a user biography with different perspective views.
     """
+    # Identity fields
+    id: str = ""
+    user_id: str = ""
+    version: int = 0
+    
     # First person - "I am..."
     content_first_view: str = ""
     summary_first_view: str = ""
@@ -20,6 +25,9 @@ class Bio:
     content_third_view: str = ""
     summary_third_view: str = ""
     
+    # Health status assessment (physical and mental health)
+    health_status: str = ""
+    
     # Additional attributes
     confidence: float = 0.0
     shades_list: List[Dict[str, Any]] = field(default_factory=list)
@@ -30,12 +38,16 @@ class Bio:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation"""
         return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "version": self.version,
             "content_first_view": self.content_first_view,
             "summary_first_view": self.summary_first_view,
             "content_second_view": self.content_second_view,
             "summary_second_view": self.summary_second_view,
             "content_third_view": self.content_third_view,
             "summary_third_view": self.summary_third_view,
+            "health_status": self.health_status,
             "confidence": self.confidence,
             "shades_list": self.shades_list,
             "created_at": self.created_at.isoformat(),
@@ -55,12 +67,16 @@ class Bio:
             updated_at = datetime.fromisoformat(updated_at)
             
         return cls(
+            id=data.get("id", ""),
+            user_id=data.get("user_id", ""),
+            version=data.get("version", 0),
             content_first_view=data.get("content_first_view", ""),
             summary_first_view=data.get("summary_first_view", ""),
             content_second_view=data.get("content_second_view", ""),
             summary_second_view=data.get("summary_second_view", ""),
             content_third_view=data.get("content_third_view", ""),
             summary_third_view=data.get("summary_third_view", ""),
+            health_status=data.get("health_status", ""),
             confidence=data.get("confidence", 0.0),
             shades_list=data.get("shades_list", []),
             created_at=created_at or datetime.now(),

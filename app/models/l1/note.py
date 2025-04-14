@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import numpy as np
 from datetime import datetime
 
@@ -45,7 +45,7 @@ class Note:
     """
     id: str
     content: str
-    create_time: datetime
+    create_time: Union[datetime, str]
     embedding: Optional[List[float]] = None
     chunks: List[Chunk] = field(default_factory=list)
     title: str = ""
@@ -57,10 +57,15 @@ class Note:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation"""
+        # Handle create_time that could be a string or datetime object
+        create_time_str = self.create_time
+        if hasattr(self.create_time, 'isoformat'):
+            create_time_str = self.create_time.isoformat()
+        
         return {
             "id": self.id,
             "content": self.content,
-            "create_time": self.create_time.isoformat(),
+            "create_time": create_time_str,
             "embedding": self.embedding,
             "chunks": [chunk.to_dict() for chunk in self.chunks],
             "title": self.title,

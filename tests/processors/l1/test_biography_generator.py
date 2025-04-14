@@ -69,6 +69,7 @@ def test_generate_status_biography(biography_generator, sample_bio):
     # Check bio properties
     assert result.content_third_view == "They are a test user."  # From mock LLM response
     assert result.summary_third_view == "Test user."  # From mock LLM response
+    assert result.health_status == "They appear to be in good health."  # From mock LLM response
     assert result.content_first_view == "I am a test user."  # From mock perspective shift
 
 
@@ -190,13 +191,14 @@ def test_parse_bio_response(biography_generator):
 
 def test_parse_status_bio_response(biography_generator):
     """Test parsing status biography response."""
-    content = '{"content_third_view": "They recently completed a project.", "summary_third_view": "Completed project."}'
+    content = '{"content_third_view": "They recently completed a project.", "summary_third_view": "Completed project.", "health_status": "They appear to be in good health."}'
     
     result = biography_generator._parse_status_bio_response(content)
     
     # Check parsing
     assert result["content_third_view"] == "They recently completed a project."
     assert result["summary_third_view"] == "Completed project."
+    assert result["health_status"] == "They appear to be in good health."
     
     # Test with malformed JSON
     malformed = "Not a JSON {missing: quotes}"

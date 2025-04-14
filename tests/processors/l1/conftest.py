@@ -14,8 +14,8 @@ def mock_llm_service():
     def mock_completion(messages):
         system_message = messages[0]['content'] if messages and messages[0]['role'] == 'system' else ''
         
-        # For biography generation
-        if "creating detailed, insightful, and accurate biographies" in system_message:
+        # For biography generation (matches both old and new prompts)
+        if "creating detailed, insightful, and accurate biographies" in system_message or "clever and perceptive individual" in system_message:
             return {
                 "choices": [
                     {
@@ -37,12 +37,12 @@ def mock_llm_service():
                 ]
             }
         # For status biography
-        elif "creating concise status biographies" in system_message:
+        elif "creating concise status biographies" in system_message or "analyzing and organizing user's memory" in system_message:
             return {
                 "choices": [
                     {
                         "message": {
-                            "content": '{"content_third_view": "They are a test user.", "summary_third_view": "Test user."}'
+                            "content": '{"content_third_view": "They are a test user.", "summary_third_view": "Test user.", "health_status": "They appear to be in good health."}'
                         }
                     }
                 ]
@@ -113,6 +113,7 @@ def sample_bio():
         summary_second_view="You're testing.",
         content_third_view="They are a test user.",
         summary_third_view="They're testing.",
+        health_status="They appear to be in good health and focused on their testing tasks.",
         shades_list=[
             {"name": "Test Shade 1", "summary": "Summary of test shade 1"},
             {"name": "Test Shade 2", "summary": "Summary of test shade 2"}

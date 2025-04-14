@@ -16,6 +16,7 @@ class Topic:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    s3_path: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation"""
@@ -27,7 +28,8 @@ class Topic:
             "embedding": self.embedding,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "s3_path": self.s3_path
         }
     
     @classmethod
@@ -49,7 +51,8 @@ class Topic:
             embedding=data.get("embedding"),
             created_at=created_at or datetime.now(),
             updated_at=updated_at or datetime.now(),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
+            s3_path=data.get("s3_path")
         )
 
 
@@ -95,6 +98,7 @@ class Cluster:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    s3_path: Optional[str] = None
     
     @property
     def document_ids(self) -> List[str]:
@@ -117,7 +121,8 @@ class Cluster:
             "center_embedding": self.center_embedding,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "s3_path": self.s3_path
         }
     
     @classmethod
@@ -140,5 +145,6 @@ class Cluster:
             center_embedding=data.get("center_embedding"),
             created_at=created_at or datetime.now(),
             updated_at=updated_at or datetime.now(),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
+            s3_path=data.get("s3_path")
         ) 

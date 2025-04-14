@@ -180,6 +180,10 @@ class WasabiStorageAdapter:
         self._validate_model(topic)
         
         s3_path = self._get_object_key(TOPICS_PREFIX, user_id, topic.id)
+        
+        # Set the s3_path on the model
+        topic.s3_path = s3_path
+        
         self.store_json(s3_path, topic.to_dict())
         return s3_path
     
@@ -197,6 +201,9 @@ class WasabiStorageAdapter:
         s3_path = self._get_object_key(TOPICS_PREFIX, user_id, topic_id)
         data = self.get_json(s3_path)
         if data:
+            # Make sure s3_path is in the data
+            if not "s3_path" in data:
+                data["s3_path"] = s3_path
             return Topic.from_dict(data)
         return None
     
@@ -214,6 +221,10 @@ class WasabiStorageAdapter:
         self._validate_model(cluster)
         
         s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster.id)
+        
+        # Set the s3_path on the model
+        cluster.s3_path = s3_path
+        
         self.store_json(s3_path, cluster.to_dict())
         return s3_path
     
@@ -231,6 +242,9 @@ class WasabiStorageAdapter:
         s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster_id)
         data = self.get_json(s3_path)
         if data:
+            # Make sure s3_path is in the data
+            if not "s3_path" in data:
+                data["s3_path"] = s3_path
             return Cluster.from_dict(data)
         return None
     
@@ -248,6 +262,10 @@ class WasabiStorageAdapter:
         self._validate_model(shade)
         
         s3_path = self._get_object_key(SHADES_PREFIX, user_id, shade.id)
+        
+        # Set the s3_path on the model
+        shade.s3_path = s3_path
+        
         self.store_json(s3_path, shade.to_dict())
         return s3_path
     
@@ -265,6 +283,9 @@ class WasabiStorageAdapter:
         s3_path = self._get_object_key(SHADES_PREFIX, user_id, shade_id)
         data = self.get_json(s3_path)
         if data:
+            # Make sure s3_path is in the data
+            if not "s3_path" in data:
+                data["s3_path"] = s3_path
             return Shade.from_dict(data)
         return None
     

@@ -740,7 +740,8 @@ class PostgresAdapter:
             document_ids=[],  # Would need to query for this
             created_at=db_topic.created_at,
             updated_at=db_topic.updated_at,
-            metadata={"s3_path": db_topic.s3_path}
+            metadata={},
+            s3_path=db_topic.s3_path
         )
     
     def convert_to_shade_model(self, db_shade: L1Shade) -> Shade:
@@ -764,7 +765,8 @@ class PostgresAdapter:
             source_clusters=cluster_ids,
             created_at=db_shade.created_at,
             updated_at=db_shade.updated_at,
-            metadata={"s3_path": db_shade.s3_path}
+            metadata={},
+            s3_path=db_shade.s3_path
         )
     
     def convert_to_cluster_model(self, db_cluster: L1Cluster) -> Cluster:
@@ -789,7 +791,8 @@ class PostgresAdapter:
             memory_list=[],  # Would need actual Memory objects
             created_at=db_cluster.created_at,
             updated_at=db_cluster.updated_at,
-            metadata={"s3_path": db_cluster.s3_path}
+            metadata={},
+            s3_path=db_cluster.s3_path
         )
     
     def convert_to_bio_model(self, db_bio: Union[L1GlobalBiography, L1StatusBiography]) -> Bio:

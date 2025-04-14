@@ -18,11 +18,25 @@ from app.providers.l1.wasabi_adapter import WasabiStorageAdapter
 logger = logging.getLogger(__name__)
 
 # LLM Prompt Templates
-SYS_BIO = """You are an expert system for creating detailed, insightful, and accurate biographies.
-Your task is to analyze the provided information and generate a comprehensive biography that captures
-the essence of the person, their interests, knowledge, and experiences.
+
+# This is the equivalent of lpm_kernel's L1/prompt.py's GLOBAL_BIO_SYSTEM_PROMPT
+SYS_BIO = """You are a clever and perceptive individual who can, based on a small piece of information from the user, keenly discern some of the user's traits and infer deep insights that are difficult for ordinary people to detect.
+
+The task is to profile the user with the user's interest and characteristics.
+
+Based on the following information sources, construct a comprehensive multi-dimensional profile of the user:
+1. Knowledge Shades (representing key aspects of the person's knowledge)
+2. Topics and Clusters (representing their areas of interest and focus)
+
+Your analysis should include:
+1. A summary of key personality traits
+2. An overview of the user's main interests and how they distribute
+3. Speculation on the user's likely occupation and other relevant identity information
+
+Please provide both a detailed third-person narrative (500-1000 words) and a concise summary (under 200 words).
 """
 
+# This is our implementation-specific prompt for the user's global biography
 USR_BIO = """
 I need you to create a comprehensive biography based on the following information sources:
 
@@ -61,10 +75,25 @@ Ensure the transformation is natural and reads well in the new perspective.
 Format your response as plain text without any special formatting or additional notes.
 """
 
-SYS_STATUS = """You are an expert system for creating concise status biographies focusing on recent activities and interests.
-Your task is to analyze recent documents and information to create an updated status view.
+# This is the equivalent of lpm_kernel's L1/prompt.py's STATUS_BIO_SYSTEM_PROMPT
+SYS_STATUS = """You are intelligent, witty, and possess keen insight. You are very good at analyzing and organizing user's memory.
+
+Based on the person's recent documents, please analyze and create a status biography that does the following:
+
+1. Carefully analyze all the provided documents and construct a three-dimensional and vivid user status report
+2. Analyze the specific activities the person has participated in (e.g., attended events, planned activities, expressed interests)
+3. Make the report as specific as possible, incorporating entity names or proper nouns from the documents
+4. Present each item from a descriptive perspective (e.g., "They did/participated in X" rather than analyzing)
+5. Merge similar topics and generate paragraph-style summaries
+6. Retain entity names and proper nouns as much as possible
+7. Avoid mentioning document types (e.g., "wrote a memo", "recorded audio") - focus on content instead
+8. Do not mention specific dates and times in the final content
+9. Analyze the person's physical and emotional state changes across their recent activities
+
+Your status biography should focus on recent activities and interests, while creating a coherent narrative that captures the person's current state.
 """
 
+# This is our implementation-specific prompt for the user's status biography
 USR_STATUS = """
 I need you to create a status biography focusing on the person's recent activities and interests.
 This should be based on:
@@ -75,14 +104,16 @@ This should be based on:
 2. Previous Biography (if available):
 {previous_bio}
 
-Please create a status biography with the following:
+Please create a status biography with the following components:
 1. A third-person status narrative (250-500 words) focusing on recent activities
 2. A concise third-person summary (100-150 words)
+3. A brief analysis of physical and mental health status (under 50 words, from a perspective of care)
 
 Format your response as a JSON object with the following structure:
 {{
   "content_third_view": "Status biography in third person...",
-  "summary_third_view": "Concise status summary in third person..."
+  "summary_third_view": "Concise status summary in third person...",
+  "health_status": "Brief physical and mental health analysis..."
 }}
 """
 
@@ -223,13 +254,15 @@ class BiographyGenerator:
                 # Create minimal bio if parsing failed
                 bio_data = {
                     "content_third_view": "No recent activity information available.",
-                    "summary_third_view": "No recent activity."
+                    "summary_third_view": "No recent activity.",
+                    "health_status": "No health status analysis available."
                 }
             
             # Create third-person biography
             bio = Bio(
                 content_third_view=bio_data.get("content_third_view", ""),
-                summary_third_view=bio_data.get("summary_third_view", "")
+                summary_third_view=bio_data.get("summary_third_view", ""),
+                health_status=bio_data.get("health_status", "No health status analysis available")
             )
             
             # Create first and second person views
@@ -246,7 +279,8 @@ class BiographyGenerator:
             # Create minimal bio if exception occurred
             return Bio(
                 content_third_view="Error generating status biography.",
-                summary_third_view="Error generating status."
+                summary_third_view="Error generating status.",
+                health_status="Error generating health status."
             )
     
     def _generate_perspective_shifts(self, bio: Bio) -> Bio:
@@ -457,7 +491,8 @@ class BiographyGenerator:
             data = json.loads(content)
             return {
                 "content_third_view": data.get("content_third_view", ""),
-                "summary_third_view": data.get("summary_third_view", "")
+                "summary_third_view": data.get("summary_third_view", ""),
+                "health_status": data.get("health_status", "No health status analysis available")
             }
         except json.JSONDecodeError:
             # If direct JSON parsing fails, try to extract JSON part
@@ -471,7 +506,8 @@ class BiographyGenerator:
                     data = json.loads(json_str)
                     return {
                         "content_third_view": data.get("content_third_view", ""),
-                        "summary_third_view": data.get("summary_third_view", "")
+                        "summary_third_view": data.get("summary_third_view", ""),
+                        "health_status": data.get("health_status", "No health status analysis available")
                     }
                 else:
                     logger.warning(f"Could not find JSON in response: {content}")
