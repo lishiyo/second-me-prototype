@@ -49,7 +49,8 @@ def apply_postgres_schema(rel_db: RelationalDB = None) -> bool:
             logger.info("Successfully applied L1 PostgreSQL schema")
             return True
             
-        except SQLAlchemyError as e:
+        except Exception as e:
+            # Rollback for any exception, not just SQLAlchemyError
             session.rollback()
             logger.error(f"Error applying L1 PostgreSQL schema: {e}")
             return False
