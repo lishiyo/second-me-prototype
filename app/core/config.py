@@ -58,6 +58,11 @@ class Settings:
     
     # For MVP, we're only using one user
     DEFAULT_USER_ID: str = "1"
+
+    # Chunking settings
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
+    MIN_CHUNK_SIZE: int = int(os.getenv("MIN_CHUNK_SIZE", "100"))
+    OVERLAP: int = int(os.getenv("OVERLAP", "50"))
     
     # Training settings
     MAX_RETRY_ATTEMPTS: int = 3

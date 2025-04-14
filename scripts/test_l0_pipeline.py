@@ -3,13 +3,17 @@
 Test script for L0 processing pipeline integration.
 This script demonstrates the complete L0 processing flow with a real document.
 
-Tested using `data/25 items.md` file.
+Usage:
+    python scripts/test_l0_pipeline.py [file_path]
+    
+If file_path is not provided, it defaults to 'data/25 items.md'.
 """
 
 import os
 import sys
 import uuid
 import logging
+import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
@@ -26,6 +30,7 @@ from app.processors.l0.document_processor import DocumentProcessor
 from app.providers.blob_store import BlobStore
 from app.providers.vector_db import VectorDB
 from app.providers.rel_db import RelationalDB
+from app.core.config import settings
 
 # Configure logging
 logging.basicConfig(
@@ -46,27 +51,27 @@ def init_storage_providers():
     # Initialize BlobStore (Wasabi)
     # For testing, we'll use local filesystem or MinIO if available
     blob_store = BlobStore(
-        access_key=os.environ.get('WASABI_ACCESS_KEY', 'minioadmin'),
-        secret_key=os.environ.get('WASABI_SECRET_KEY', 'minioadmin'),
-        bucket=os.environ.get('WASABI_BUCKET', 'second-me'),
-        region=os.environ.get('WASABI_REGION', 'us-west-1'),
-        endpoint=os.environ.get('WASABI_ENDPOINT', 'http://localhost:9000')
+        access_key=settings.WASABI_ACCESS_KEY,
+        secret_key=settings.WASABI_SECRET_KEY,
+        bucket=settings.WASABI_BUCKET,
+        region=settings.WASABI_REGION,
+        endpoint=settings.WASABI_ENDPOINT
     )
     
     # Initialize VectorDB (Weaviate)
     vector_db = VectorDB(
-        url=os.environ.get('WEAVIATE_URL', 'http://localhost:8080'),
-        api_key=os.environ.get('WEAVIATE_API_KEY', 'weaviate-api-key'),
-        embedding_model=os.environ.get('EMBEDDING_MODEL', 'text-embedding-3-small')
+        url=settings.WEAVIATE_URL,
+        api_key=settings.WEAVIATE_API_KEY,
+        embedding_model=settings.EMBEDDING_MODEL
     )
     
     # Initialize RelationalDB (PostgreSQL)
     rel_db = RelationalDB(
-        host=os.environ.get('DB_HOST', 'localhost'),
-        port=os.environ.get('DB_PORT', '5432'),
-        database=os.environ.get('DB_NAME', 'second_me'),
-        user=os.environ.get('DB_USER', 'postgres'),
-        password=os.environ.get('DB_PASSWORD', 'postgres')
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        database=settings.DB_NAME,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD
     )
     
     return blob_store, vector_db, rel_db
@@ -108,7 +113,7 @@ def process_file(file_path, document_processor):
         # Create document record
         document_processor.rel_db_provider.create_document(
             session=db_session,
-            user_id=document_processor.user_id,  # UUID from document_processor
+            user_id=document_processor.user_id,  # User ID from document_processor
             filename=filename,
             content_type=content_type,
             s3_path=f"tenant/{document_processor.user_id}/raw/{document_id}_{filename}"
@@ -127,11 +132,20 @@ def process_file(file_path, document_processor):
     # Return the processing result
     return result
 
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Test the L0 processing pipeline with a document.')
+    parser.add_argument('file_path', nargs='?', default=None, 
+                        help='Path to the file to process. Defaults to "data/25 items.md".')
+    return parser.parse_args()
+
 def main():
     """Main function to run the test."""
+    # Parse command line arguments
+    args = parse_arguments()
+    
     # Check for OpenAI API key
-    openai_api_key = os.environ.get('OPENAI_API_KEY')
-    if not openai_api_key:
+    if not settings.OPENAI_API_KEY:
         logger.error("OPENAI_API_KEY environment variable is required")
         logger.error("Make sure you have a .env file in the project root with OPENAI_API_KEY=your_key")
         logger.error("Or set it directly in your environment with: export OPENAI_API_KEY=your_key")
@@ -146,8 +160,8 @@ def main():
         sys.exit(1)
     
     try:
-        # Use the default tenant ID "1" for testing
-        user_id = DocumentProcessor.DEFAULT_TENANT_ID
+        # Use the default user ID from settings
+        user_id = settings.DEFAULT_USER_ID
         logger.info(f"Using user_id: {user_id}")
         
         # Get or create user in database
@@ -162,18 +176,25 @@ def main():
         finally:
             rel_db.close_db_session(db_session)
         
-        # Create document processor
+        # Create document processor with chunking settings from config
         document_processor = DocumentProcessor(
             storage_provider=blob_store,
             vector_db_provider=vector_db,
             rel_db_provider=rel_db,
-            openai_api_key=openai_api_key,
+            openai_api_key=settings.OPENAI_API_KEY,
             chunking_strategy="paragraph",
-            user_id=user_id  # Use the UUID we created
+            user_id=user_id,
+            # Use chunking settings from config
+            max_chunk_size=settings.CHUNK_SIZE,
+            min_chunk_size=settings.MIN_CHUNK_SIZE,
+            overlap=settings.OVERLAP
         )
         
         # Define the file to process
-        file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', '25 items.md'))
+        default_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', '25 items.md'))
+        file_path = args.file_path if args.file_path else default_file_path
+        
+        # Validate file existence
         if not os.path.exists(file_path):
             logger.error(f"File not found: {file_path}")
             sys.exit(1)

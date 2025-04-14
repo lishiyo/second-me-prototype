@@ -16,6 +16,7 @@ from app.processors.l0.document_analyzer import DocumentAnalyzer
 from app.processors.l0.document_insight_processor import DocumentInsightProcessor
 from app.processors.l0.embedding_generator import EmbeddingGenerator
 from app.processors.l0.utils import setup_logger, retry, safe_execute
+from app.core.config import settings
 
 # Set up logger
 logger = setup_logger(__name__)
@@ -31,9 +32,6 @@ class DocumentProcessor:
     5. Storage coordination
     """
     
-    # Default tenant ID for MVP
-    DEFAULT_TENANT_ID = "1"
-    
     def __init__(self, 
                  storage_provider: Any,  # BlobStore
                  vector_db_provider: Any,  # VectorDB
@@ -43,7 +41,10 @@ class DocumentProcessor:
                  embedding_model: str = "text-embedding-3-small",
                  insight_model: str = "gpt-4o-mini",
                  summary_model: str = "gpt-3.5-turbo",
-                 user_id: str = "1"):  # Default user_id for MVP
+                 user_id: str = None,  # Default user_id from settings
+                 max_chunk_size: int = 1000,
+                 min_chunk_size: int = 100,
+                 overlap: int = 50):
         """
         Initialize the document processor with required components.
         
@@ -56,27 +57,34 @@ class DocumentProcessor:
             embedding_model: OpenAI embedding model name
             insight_model: OpenAI model for generating deep insights
             summary_model: OpenAI model for generating summaries
-            user_id: User ID (defaults to "1" for MVP)
+            user_id: User ID (defaults to settings.DEFAULT_USER_ID)
+            max_chunk_size: Maximum size of chunks in characters
+            min_chunk_size: Minimum size of chunks in characters
+            overlap: Amount of overlap between chunks in characters
         """
         self.storage_provider = storage_provider
         self.vector_db_provider = vector_db_provider
         self.rel_db_provider = rel_db_provider
         self.openai_api_key = openai_api_key or os.environ.get("OPENAI_API_KEY")
-        self.user_id = user_id
+        self.user_id = user_id or settings.DEFAULT_USER_ID
         
-        # For MVP, warn if user_id is not the default since we'll use DEFAULT_TENANT_ID for vector DB
-        if self.user_id != self.DEFAULT_TENANT_ID:
-            logger.warning(f"Using non-default user_id '{user_id}' for storage paths, but vector DB operations will use tenant_id='{self.DEFAULT_TENANT_ID}' for MVP")
+        # For MVP, warn if user_id is not the default since we'll use DEFAULT_USER_ID for vector DB
+        if self.user_id != settings.DEFAULT_USER_ID:
+            logger.warning(f"Using non-default user_id '{user_id}' for storage paths, but vector DB operations will use tenant_id='{settings.DEFAULT_USER_ID}' for MVP")
         
         # Ensure default tenant exists in vector database
         try:
-            self._ensure_tenant_exists(self.DEFAULT_TENANT_ID)
+            self._ensure_tenant_exists(settings.DEFAULT_USER_ID)
         except Exception as e:
-            logger.warning(f"Could not verify tenant '{self.DEFAULT_TENANT_ID}' during initialization. Will try again when processing: {e}")
+            logger.warning(f"Could not verify tenant '{settings.DEFAULT_USER_ID}' during initialization. Will try again when processing: {e}")
         
         # Initialize component classes
         self.content_extractor = ContentExtractor()
-        self.chunker = Chunker(max_chunk_size=1000, min_chunk_size=100, overlap=50)
+        self.chunker = Chunker(
+            max_chunk_size=max_chunk_size, 
+            min_chunk_size=min_chunk_size, 
+            overlap=overlap
+        )
         
         # Two-stage document analysis processor
         self.document_insight_processor = DocumentInsightProcessor(
@@ -389,12 +397,12 @@ class DocumentProcessor:
                     logger.info(f"Adding chunk {i} to vector DB (embedding dim: {len(chunk.embedding)})")
                     
                     # Make sure tenant exists before adding chunk
-                    tenant_id = self.DEFAULT_TENANT_ID  # Fixed tenant ID for MVP
+                    tenant_id = self.user_id  # Use user_id for vector DB
                     self._ensure_tenant_exists(tenant_id)
                     
                     # Add the chunk to vector DB
                     self.vector_db_provider.add_chunk(
-                        tenant_id=tenant_id,  # Fixed tenant ID for MVP
+                        tenant_id=tenant_id,
                         document_id=chunk.document_id,
                         s3_path=chunk.s3_path,
                         chunk_index=chunk.chunk_index,
