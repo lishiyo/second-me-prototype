@@ -48,6 +48,23 @@ To ingest all the files under `data`:
 python scripts/process_all_data.py --skip-existing
 ```
 
+To query the relational database:
+```
+psql -h $(grep DB_HOST .env | cut -d '=' -f2) -p $(grep DB_PORT .env | cut -d '=' -f2) -U $(grep DB_USER .env | cut -d '=' -f2) -d $(grep DB_NAME .env | cut -d '=' -f2) -c "SELECT id, filename, title, processed, chunk_count, insight IS NOT NULL AS has_insight, summary IS NOT NULL AS has_summary FROM documents ORDER BY uploaded_at DESC;"
+
+// For local postgres
+psql -h 127.0.0.1 -U postgres -d second-me-prototype -c "SELECT id, filename, title, processed, chunk_count, insight IS NOT NULL AS has_insight, summary IS NOT NULL AS has_summary FROM documents ORDER BY uploaded_at DESC;"
+
+// Check table structure
+psql -h 127.0.0.1 -U postgres -d second-me-prototype -c "\d documents"
+
+// check one file
+psql -h 127.0.0.1 -U postgres -d second-me-prototype -c "SELECT * FROM documents WHERE filename = '2012-12-06.md';"
+
+psql -h 127.0.0.1 -U postgres -d second-me-prototype
+SELECT * FROM documents ORDER BY uploaded_at DESC;
+```
+
 ## Implementation Details
 
 The implementation is inspired by the approach used in the `lpm_kernel` L0 layer but simplified and adapted for our needs. The key differences are:

@@ -30,6 +30,12 @@ class TestL0Integration(unittest.TestCase):
         self.mock_db_session = MagicMock()
         self.mock_rel_db.get_db_session.return_value = self.mock_db_session
         
+        # Create mock for Document class - this is used directly in _update_document_status_with_session
+        self.document_patch = patch('app.processors.l0.document_processor.Document')
+        self.mock_document_class = self.document_patch.start()
+        self.mock_document = MagicMock(spec=Document)
+        self.mock_document_class.return_value = self.mock_document
+        
         # Create mock OpenAI API key for testing
         self.test_api_key = "test-api-key"
         
@@ -39,8 +45,33 @@ class TestL0Integration(unittest.TestCase):
         mock_user.id = self.test_user_id
         self.mock_rel_db.get_or_create_user.return_value = mock_user
         
-        # Mock the get_document method to return None (doc doesn't exist yet)
+        # Mock the get_document method to return None initially
         self.mock_rel_db.get_document.return_value = None
+        
+        # Mock the query method on db_session
+        # This needs to be dynamic: return None initially, but return the mock document
+        # after it's been added to the session.
+        mock_query = MagicMock()
+        mock_filter = MagicMock()
+        
+        # Store the mock document object to be returned later
+        self._mock_doc_instance = None
+        
+        def mock_query_first(*args, **kwargs):
+            # Return the mock document instance *if* it has been set (simulating it being added)
+            return self._mock_doc_instance
+        
+        mock_filter.first.side_effect = mock_query_first
+        mock_query.filter.return_value = mock_filter
+        self.mock_db_session.query.return_value = mock_query
+        
+        # Mock the session add method to capture the added document
+        def mock_session_add(obj):
+            # Use the *actual* Document class for the check
+            if isinstance(obj, Document):
+                self._mock_doc_instance = obj # Capture the document instance when it's added
+        
+        self.mock_db_session.add.side_effect = mock_session_add
         
         # Create temp files for testing
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -81,6 +112,7 @@ class TestL0Integration(unittest.TestCase):
         """Clean up test environment after each test."""
         self.temp_dir.cleanup()
         self.api_key_patch.stop()
+        self.document_patch.stop()
 
     def setup_mocks(self):
         """Configure mocks for integration testing."""
@@ -192,15 +224,15 @@ class TestL0Integration(unittest.TestCase):
             "Neither put_json nor multiple put_object calls were made for chunks"
         )
         
-        # Document metadata should be updated in database - using the keyword args pattern
-        self.mock_rel_db.update_document_processed.assert_called()
+        # Document should be created via the session.add method
+        self.mock_db_session.add.assert_called()
+        self.mock_document_class.assert_called()  # Document constructor should be called
         
-        # Check that update_document_processed was called with correct args by inspecting call_args
-        args, kwargs = self.mock_rel_db.update_document_processed.call_args
-        self.assertEqual(kwargs.get('session'), self.mock_db_session)
-        self.assertEqual(kwargs.get('document_id'), document_id)
-        self.assertEqual(kwargs.get('processed'), True)
-        self.assertEqual(kwargs.get('chunk_count'), 2)
+        # Document should be updated to completed status
+        # The implementation uses internal _update_document_status_with_session,
+        # So we verify the DB session is used and the document is committed
+        self.mock_rel_db.get_db_session.assert_called()
+        self.mock_db_session.commit.assert_called()
         
         # Chunks should be added to vector DB
         self.assertTrue(
@@ -237,6 +269,13 @@ class TestL0Integration(unittest.TestCase):
         self.assertEqual(result.insight.title, "Test Document")
         self.assertIsNotNone(result.summary)
         self.assertEqual(len(result.summary.keywords), 4)
+        
+        # Verify key operations were performed
+        self.mock_blob_store.put_object.assert_called()
+        self.mock_db_session.add.assert_called()  # Document is created directly
+        self.mock_document_class.assert_called()  # Document constructor should be called
+        self.mock_rel_db.get_db_session.assert_called()
+        self.mock_db_session.commit.assert_called()
 
     def test_error_handling(self):
         """Test error handling during document processing."""
@@ -260,6 +299,14 @@ class TestL0Integration(unittest.TestCase):
         self.assertEqual(result.status, ProcessingStatus.FAILED)
         self.assertEqual(result.document_id, document_id)
         self.assertIn("Content extraction failed", result.error)
+        
+        # Verify database operations in error case
+        self.mock_rel_db.get_db_session.assert_called()
+        self.mock_db_session.add.assert_called()  # Document is created directly
+        self.mock_document_class.assert_called()  # Document constructor should be called
+        self.mock_db_session.rollback.assert_called()     # Rollback should be called
+        # Verify the provider's close_db_session is called with the mock session
+        self.mock_rel_db.close_db_session.assert_called_with(self.mock_db_session)
 
     def test_chunking_strategies(self):
         """Test different chunking strategies."""

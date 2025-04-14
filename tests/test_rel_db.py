@@ -1,7 +1,7 @@
 import unittest
 import os
 import uuid
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 from datetime import datetime, timezone
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -192,12 +192,16 @@ class TestRelationalDB(unittest.TestCase):
         """Test creating a document."""
         # Create mock document
         mock_document = MagicMock(spec=Document)
-        mock_document.id = "test-doc-id"
-        
+        # We don't need to set mock_document.id here anymore,
+        # as the assertion will check the arguments passed to the constructor.
+
         # Set up the mock to intercept Document instantiation
         with patch('app.providers.rel_db.Document') as mock_document_class:
-            mock_document_class.return_value = mock_document
-            
+            # The return_value is what the instantiated object *becomes*,
+            # not what it's called with. Let's make it simpler.
+            mock_document_instance = MagicMock(spec=Document)
+            mock_document_class.return_value = mock_document_instance
+
             # Call the method to test
             result = self.test_db.create_document(
                 self.mock_session,
@@ -205,18 +209,27 @@ class TestRelationalDB(unittest.TestCase):
                 filename="test.pdf",
                 content_type="application/pdf",
                 s3_path="test/path.pdf"
+                # title, insight, summary, document_id are omitted,
+                # so they should default to None or a generated ID
             )
-            
+
             # Verify results
-            self.mock_session.add.assert_called_once()
+            self.mock_session.add.assert_called_once_with(mock_document_instance)
+            self.mock_session.flush.assert_called_once() # Called before commit
             self.mock_session.commit.assert_called_once()
-            self.assertEqual(result, mock_document)
+            self.mock_session.refresh.assert_called_once_with(mock_document_instance)
+            self.assertEqual(result, mock_document_instance)
+
             # Verify Document was instantiated with correct params
             mock_document_class.assert_called_once_with(
+                id=ANY,  # Check that an ID was passed (likely generated)
                 user_id="test-user-id",
                 filename="test.pdf",
                 content_type="application/pdf",
-                s3_path="test/path.pdf"
+                s3_path="test/path.pdf",
+                title=None,  # Check default None value
+                insight=None,  # Check default None value
+                summary=None  # Check default None value
             )
 
     def test_get_document(self):

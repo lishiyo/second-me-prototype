@@ -220,7 +220,8 @@ class RelationalDB:
                       s3_path: str,
                       title: Optional[str] = None,
                       insight: Optional[Dict] = None,
-                      summary: Optional[Dict] = None) -> Document:
+                      summary: Optional[Dict] = None,
+                      document_id: Optional[str] = None) -> Document:
         """
         Create a new document record.
         
@@ -233,12 +234,21 @@ class RelationalDB:
             title: Optional document title
             insight: Optional document insight data
             summary: Optional document summary data
+            document_id: Optional document ID (defaults to generated UUID)
             
         Returns:
             Created document object
         """
         try:
+            # Use provided document_id or generate a new one
+            doc_id = document_id or str(uuid.uuid4())
+            
+            # Log the document ID being created
+            logger.info(f"Creating document with ID: {doc_id}")
+            
+            # Create document with explicit ID
             document = Document(
+                id=doc_id,
                 user_id=user_id,
                 filename=filename,
                 content_type=content_type,
@@ -247,9 +257,29 @@ class RelationalDB:
                 insight=insight,
                 summary=summary
             )
+            
+            # Add to session and flush to ensure it gets an ID
             session.add(document)
+            session.flush()
+            
+            # Query to verify it's in the session
+            verification = session.query(Document).filter(Document.id == doc_id).first()
+            if verification:
+                logger.info(f"Verified document {doc_id} exists in session before commit")
+            else:
+                logger.warning(f"Document {doc_id} not found in session before commit - possible database issue")
+            
+            # Commit and refresh
             session.commit()
             session.refresh(document)
+            
+            # Double-check after commit
+            post_verification = session.query(Document).filter(Document.id == doc_id).first()
+            if post_verification:
+                logger.info(f"Verified document {doc_id} exists in session after commit")
+            else:
+                logger.error(f"Document {doc_id} not found in session after commit - database error")
+            
             return document
         except SQLAlchemyError as e:
             session.rollback()
