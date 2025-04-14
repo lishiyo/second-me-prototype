@@ -14,6 +14,7 @@ logger = setup_logger(__name__)
 
 class EmbeddingGenerator:
     """
+    TODO: Replace with the new LLMService class
     Generates vector embeddings for document chunks using OpenAI's API.
     """
     
