@@ -234,6 +234,8 @@ Subtasks 1-6 → Subtask 7
 
 ### Subtask 7: Expose through FastAPI
 
+**NOTE**: This has been skipped for now, we will focus on L1.
+
 **Steps:**
 1. Create or update API routes in app/api/ingest.py:
    - POST endpoint for document ingestion
