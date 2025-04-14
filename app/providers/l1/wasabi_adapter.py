@@ -12,9 +12,7 @@ from typing import Dict, Any, Optional, Union, List
 import uuid
 from unittest.mock import MagicMock
 
-import boto3
-from botocore.exceptions import ClientError
-
+from app.providers.blob_store import BlobStore
 from app.models.l1.topic import Topic, Cluster
 from app.models.l1.shade import Shade
 from app.models.l1.bio import Bio
@@ -46,7 +44,8 @@ class WasabiStorageAdapter:
         access_key: str = None,
         secret_key: str = None,
         endpoint_url: str = "https://s3.wasabisys.com",
-        region_name: str = "us-east-1"
+        region_name: str = "us-east-1",
+        blob_store: Optional[BlobStore] = None
     ):
         """
         Initialize the WasabiStorageAdapter.
@@ -57,34 +56,31 @@ class WasabiStorageAdapter:
             secret_key: AWS secret key.
             endpoint_url: Wasabi endpoint URL.
             region_name: AWS region name.
+            blob_store: Optional BlobStore instance to use for S3 operations.
         """
         self.bucket_name = bucket_name or os.getenv("WASABI_BUCKET_NAME", "test-bucket")
-        access_key = access_key or os.getenv("WASABI_ACCESS_KEY", "test-key")
-        secret_key = secret_key or os.getenv("WASABI_SECRET_KEY", "test-secret")
+        self.access_key = access_key or os.getenv("WASABI_ACCESS_KEY", "test-key")
+        self.secret_key = secret_key or os.getenv("WASABI_SECRET_KEY", "test-secret")
+        self.endpoint_url = endpoint_url
+        self.region_name = region_name
         
-        # If running in test mode (with default values), use a mock client
-        if self.bucket_name == "test-bucket" and access_key == "test-key" and secret_key == "test-secret":
-            logger.info("Initializing WasabiStorageAdapter in test mode with mock client")
-            self.client = MagicMock()
-            self.resource = MagicMock()
-            self.bucket = MagicMock()
-            return
-        
-        self.client = boto3.client(
-            "s3",
-            endpoint_url=endpoint_url,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            region_name=region_name
-        )
-        self.resource = boto3.resource(
-            "s3",
-            endpoint_url=endpoint_url,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            region_name=region_name
-        )
-        self.bucket = self.resource.Bucket(self.bucket_name)
+        # Use the provided BlobStore or create a new one
+        if blob_store is not None:
+            self.blob_store = blob_store
+        else:
+            # If running in test mode (with default values), use a mock store
+            if self.bucket_name == "test-bucket" and self.access_key == "test-key" and self.secret_key == "test-secret":
+                logger.info("Initializing WasabiStorageAdapter in test mode with mock client")
+                self.blob_store = MagicMock()
+            else:
+                # Create a real BlobStore
+                self.blob_store = BlobStore(
+                    access_key=self.access_key,
+                    secret_key=self.secret_key,
+                    bucket=self.bucket_name,
+                    region=self.region_name,
+                    endpoint=self.endpoint_url
+                )
     
     def _get_object_key(self, prefix: str, user_id: str, object_id: str) -> str:
         """
@@ -129,13 +125,12 @@ class WasabiStorageAdapter:
         """
         try:
             data_json = json.dumps(data)
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=object_key,
-                Body=data_json,
-                ContentType="application/json"
+            self.blob_store.put_object(
+                key=object_key,
+                data=data_json.encode('utf-8'),
+                metadata={"Content-Type": "application/json"}
             )
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error storing JSON data in Wasabi: {e}")
             raise
     
@@ -150,19 +145,15 @@ class WasabiStorageAdapter:
             JSON data or None if not found.
         """
         try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
-            data_json = response["Body"].read().decode("utf-8")
-            return json.loads(data_json)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
+            data_bytes = self.blob_store.get_object(key=object_key)
+            return json.loads(data_bytes.decode('utf-8'))
+        except Exception as e:
+            # Check if it's a "not found" error
+            if "NoSuchKey" in str(e):
                 logger.warning(f"JSON data not found: {object_key}")
                 return None
-            else:
-                logger.error(f"Error retrieving JSON data from Wasabi: {e}")
-                raise
+            logger.error(f"Error retrieving JSON data from Wasabi: {e}")
+            raise
     
     # Domain model methods
     
@@ -376,21 +367,17 @@ class WasabiStorageAdapter:
         prefix = f"{TOPICS_PREFIX}{user_id}/"
         
         try:
-            response = self.client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=prefix
-            )
+            objects = self.blob_store.list_objects(prefix=prefix)
             
             topic_ids = []
-            if "Contents" in response:
-                for item in response["Contents"]:
-                    key = item["Key"]
-                    # Extract the ID from the key (remove prefix and .json suffix)
-                    topic_id = key[len(prefix):-5]  # -5 to remove ".json"
-                    topic_ids.append(topic_id)
+            for obj in objects:
+                key = obj["Key"]
+                # Extract the ID from the key (remove prefix and .json suffix)
+                topic_id = key[len(prefix):-5]  # -5 to remove ".json"
+                topic_ids.append(topic_id)
             
             return topic_ids
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error listing topics in Wasabi: {e}")
             return []
     
@@ -407,21 +394,17 @@ class WasabiStorageAdapter:
         prefix = f"{CLUSTERS_PREFIX}{user_id}/"
         
         try:
-            response = self.client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=prefix
-            )
+            objects = self.blob_store.list_objects(prefix=prefix)
             
             cluster_ids = []
-            if "Contents" in response:
-                for item in response["Contents"]:
-                    key = item["Key"]
-                    # Extract the ID from the key (remove prefix and .json suffix)
-                    cluster_id = key[len(prefix):-5]  # -5 to remove ".json"
-                    cluster_ids.append(cluster_id)
+            for obj in objects:
+                key = obj["Key"]
+                # Extract the ID from the key (remove prefix and .json suffix)
+                cluster_id = key[len(prefix):-5]  # -5 to remove ".json"
+                cluster_ids.append(cluster_id)
             
             return cluster_ids
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error listing clusters in Wasabi: {e}")
             return []
     
@@ -438,21 +421,17 @@ class WasabiStorageAdapter:
         prefix = f"{SHADES_PREFIX}{user_id}/"
         
         try:
-            response = self.client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=prefix
-            )
+            objects = self.blob_store.list_objects(prefix=prefix)
             
             shade_ids = []
-            if "Contents" in response:
-                for item in response["Contents"]:
-                    key = item["Key"]
-                    # Extract the ID from the key (remove prefix and .json suffix)
-                    shade_id = key[len(prefix):-5]  # -5 to remove ".json"
-                    shade_ids.append(shade_id)
+            for obj in objects:
+                key = obj["Key"]
+                # Extract the ID from the key (remove prefix and .json suffix)
+                shade_id = key[len(prefix):-5]  # -5 to remove ".json"
+                shade_ids.append(shade_id)
             
             return shade_ids
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error listing shades in Wasabi: {e}")
             return []
     
@@ -469,21 +448,17 @@ class WasabiStorageAdapter:
         prefix = f"{BIOS_PREFIX}{user_id}/"
         
         try:
-            response = self.client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=prefix
-            )
+            objects = self.blob_store.list_objects(prefix=prefix)
             
             bio_ids = []
-            if "Contents" in response:
-                for item in response["Contents"]:
-                    key = item["Key"]
-                    # Extract the ID from the key (remove prefix and .json suffix)
-                    bio_id = key[len(prefix):-5]  # -5 to remove ".json"
-                    bio_ids.append(bio_id)
+            for obj in objects:
+                key = obj["Key"]
+                # Extract the ID from the key (remove prefix and .json suffix)
+                bio_id = key[len(prefix):-5]  # -5 to remove ".json"
+                bio_ids.append(bio_id)
             
             return bio_ids
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error listing biographies in Wasabi: {e}")
             return []
     
@@ -501,12 +476,9 @@ class WasabiStorageAdapter:
         object_key = self._get_object_key(TOPICS_PREFIX, user_id, topic_id)
         
         try:
-            self.client.delete_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
+            self.blob_store.delete_object(key=object_key)
             return True
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error deleting topic from Wasabi: {e}")
             return False
     
@@ -524,12 +496,9 @@ class WasabiStorageAdapter:
         object_key = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster_id)
         
         try:
-            self.client.delete_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
+            self.blob_store.delete_object(key=object_key)
             return True
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error deleting cluster from Wasabi: {e}")
             return False
     
@@ -547,12 +516,9 @@ class WasabiStorageAdapter:
         object_key = self._get_object_key(SHADES_PREFIX, user_id, shade_id)
         
         try:
-            self.client.delete_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
+            self.blob_store.delete_object(key=object_key)
             return True
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error deleting shade from Wasabi: {e}")
             return False
     
@@ -570,12 +536,9 @@ class WasabiStorageAdapter:
         object_key = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
         
         try:
-            self.client.delete_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
+            self.blob_store.delete_object(key=object_key)
             return True
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error deleting biography from Wasabi: {e}")
             return False
     
@@ -599,27 +562,14 @@ class WasabiStorageAdapter:
             ]
             
             for prefix in prefixes:
-                paginator = self.client.get_paginator("list_objects_v2")
-                pages = paginator.paginate(
-                    Bucket=self.bucket_name,
-                    Prefix=prefix
-                )
+                objects = self.blob_store.list_objects(prefix=prefix)
                 
-                # Delete objects in batches
-                for page in pages:
-                    if "Contents" not in page:
-                        continue
-                    
-                    objects_to_delete = [{"Key": obj["Key"]} for obj in page["Contents"]]
-                    
-                    if objects_to_delete:
-                        self.client.delete_objects(
-                            Bucket=self.bucket_name,
-                            Delete={"Objects": objects_to_delete}
-                        )
+                # Delete objects one by one
+                for obj in objects:
+                    self.blob_store.delete_object(key=obj["Key"])
             
             return True
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error deleting user data from Wasabi: {e}")
             return False
     
@@ -649,37 +599,26 @@ class WasabiStorageAdapter:
             ]
             
             for prefix in prefixes:
-                paginator = self.client.get_paginator("list_objects_v2")
-                pages = paginator.paginate(
-                    Bucket=self.bucket_name,
-                    Prefix=prefix
-                )
+                objects = self.blob_store.list_objects(prefix=prefix)
                 
-                for page in pages:
-                    if "Contents" not in page:
+                for obj in objects:
+                    source_key = obj["Key"]
+                    
+                    # Determine backup key (maintain original structure under backup prefix)
+                    if source_key.startswith(TOPICS_PREFIX):
+                        backup_key = source_key.replace(TOPICS_PREFIX, f"{backup_prefix}{TOPICS_PREFIX}")
+                    elif source_key.startswith(CLUSTERS_PREFIX):
+                        backup_key = source_key.replace(CLUSTERS_PREFIX, f"{backup_prefix}{CLUSTERS_PREFIX}")
+                    elif source_key.startswith(SHADES_PREFIX):
+                        backup_key = source_key.replace(SHADES_PREFIX, f"{backup_prefix}{SHADES_PREFIX}")
+                    elif source_key.startswith(BIOS_PREFIX):
+                        backup_key = source_key.replace(BIOS_PREFIX, f"{backup_prefix}{BIOS_PREFIX}")
+                    else:
                         continue
                     
-                    for obj in page["Contents"]:
-                        source_key = obj["Key"]
-                        
-                        # Determine backup key (maintain original structure under backup prefix)
-                        if source_key.startswith(TOPICS_PREFIX):
-                            backup_key = source_key.replace(TOPICS_PREFIX, f"{backup_prefix}{TOPICS_PREFIX}")
-                        elif source_key.startswith(CLUSTERS_PREFIX):
-                            backup_key = source_key.replace(CLUSTERS_PREFIX, f"{backup_prefix}{CLUSTERS_PREFIX}")
-                        elif source_key.startswith(SHADES_PREFIX):
-                            backup_key = source_key.replace(SHADES_PREFIX, f"{backup_prefix}{SHADES_PREFIX}")
-                        elif source_key.startswith(BIOS_PREFIX):
-                            backup_key = source_key.replace(BIOS_PREFIX, f"{backup_prefix}{BIOS_PREFIX}")
-                        else:
-                            continue
-                        
-                        # Copy the object
-                        self.client.copy_object(
-                            Bucket=self.bucket_name,
-                            CopySource={"Bucket": self.bucket_name, "Key": source_key},
-                            Key=backup_key
-                        )
+                    # Get the object content and store it at the backup location
+                    object_data = self.blob_store.get_object(key=source_key)
+                    self.blob_store.put_object(key=backup_key, data=object_data)
             
             # Store backup metadata
             metadata = {
@@ -689,14 +628,13 @@ class WasabiStorageAdapter:
                 "status": "completed"
             }
             
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=f"{backup_prefix}metadata.json",
-                Body=json.dumps(metadata),
-                ContentType="application/json"
+            self.blob_store.put_object(
+                key=f"{backup_prefix}metadata.json",
+                data=json.dumps(metadata).encode('utf-8'),
+                metadata={"Content-Type": "application/json"}
             )
             
             return backup_id
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Error creating backup in Wasabi: {e}")
             raise 

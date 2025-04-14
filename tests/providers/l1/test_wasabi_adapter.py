@@ -5,100 +5,107 @@ import io
 from botocore.exceptions import ClientError
 
 from app.providers.l1.wasabi_adapter import WasabiStorageAdapter, InvalidModelError
+from app.providers.blob_store import BlobStore
 from app.models.l1.topic import Topic, Cluster
 from app.models.l1.shade import Shade
 from app.models.l1.bio import Bio
 
 
 @pytest.fixture
-def mock_s3_client():
-    """Return a mock boto3 S3 client."""
-    client = MagicMock()
-    return client
+def mock_blob_store():
+    """Return a mock BlobStore instance."""
+    mock = MagicMock(spec=BlobStore)
+    return mock
 
 
 @pytest.fixture
-def mock_s3_resource():
-    """Return a mock boto3 S3 resource."""
-    resource = MagicMock()
-    bucket = MagicMock()
-    resource.Bucket.return_value = bucket
-    return resource
-
-
-@pytest.fixture
-def wasabi_adapter(mock_s3_client, mock_s3_resource):
-    """Return a WasabiStorageAdapter with mocked S3 client and resource."""
-    with patch('boto3.client', return_value=mock_s3_client), \
-         patch('boto3.resource', return_value=mock_s3_resource):
-        adapter = WasabiStorageAdapter(
-            bucket_name="test-bucket",
-            access_key="test-key",
-            secret_key="test-secret"
-        )
-        adapter.client = mock_s3_client
-        adapter.resource = mock_s3_resource
-        yield adapter
+def wasabi_adapter(mock_blob_store):
+    """Return a WasabiStorageAdapter with a mocked BlobStore."""
+    adapter = WasabiStorageAdapter(
+        bucket_name="test-bucket",
+        access_key="test-key",
+        secret_key="test-secret",
+        blob_store=mock_blob_store
+    )
+    return adapter
 
 
 def test_init():
     """Test WasabiStorageAdapter initialization."""
-    with patch('boto3.client'), patch('boto3.resource'):
+    # Test with provided BlobStore
+    mock_blob_store = MagicMock(spec=BlobStore)
+    adapter = WasabiStorageAdapter(
+        bucket_name="test-bucket",
+        access_key="test-key",
+        secret_key="test-secret",
+        blob_store=mock_blob_store
+    )
+    assert adapter.bucket_name == "test-bucket"
+    assert adapter.blob_store == mock_blob_store
+    
+    # Test auto-creating BlobStore
+    # Patch BlobStore specifically where it's imported in wasabi_adapter
+    with patch('app.providers.l1.wasabi_adapter.BlobStore') as mock_blob_store_class:
         adapter = WasabiStorageAdapter(
-            bucket_name="test-bucket",
-            access_key="test-key",
-            secret_key="test-secret"
+            bucket_name="real-bucket",
+            access_key="real-key",
+            secret_key="real-secret",
+            endpoint_url="real-endpoint",
+            region_name="real-region"
         )
-        assert adapter.bucket_name == "test-bucket"
+        
+        # Verify that BlobStore was instantiated with the correct parameters
+        mock_blob_store_class.assert_called_once_with(
+            access_key="real-key",
+            secret_key="real-secret",
+            bucket="real-bucket",
+            region="real-region",
+            endpoint="real-endpoint"
+        )
+        # Verify the adapter holds the created instance
+        assert adapter.blob_store == mock_blob_store_class.return_value
 
 
-def test_store_json(wasabi_adapter, mock_s3_client):
+def test_store_json(wasabi_adapter, mock_blob_store):
     """Test storing JSON data."""
     object_key = "l1/test/path.json"
     data = {"test": "data"}
     
     wasabi_adapter.store_json(object_key, data)
     
-    mock_s3_client.put_object.assert_called_once()
-    call_args = mock_s3_client.put_object.call_args[1]
+    mock_blob_store.put_object.assert_called_once()
+    call_args = mock_blob_store.put_object.call_args[1]
     
-    assert call_args["Bucket"] == "test-bucket"
-    assert call_args["Key"] == object_key
-    assert "test" in call_args["Body"]
+    assert call_args["key"] == object_key
+    assert b"test" in call_args["data"]
+    assert call_args["metadata"] == {"Content-Type": "application/json"}
 
 
-def test_get_json(wasabi_adapter, mock_s3_client):
+def test_get_json(wasabi_adapter, mock_blob_store):
     """Test retrieving JSON data."""
     object_key = "l1/test/path.json"
     
     # Configure the mock response
-    mock_body = MagicMock()
-    mock_body.read.return_value = json.dumps({"test": "data"}).encode()
-    mock_s3_client.get_object.return_value = {
-        "Body": mock_body
-    }
+    test_data = json.dumps({"test": "data"}).encode()
+    mock_blob_store.get_object.return_value = test_data
     
     result = wasabi_adapter.get_json(object_key)
     
-    mock_s3_client.get_object.assert_called_once_with(
-        Bucket="test-bucket",
-        Key=object_key
-    )
-    
+    mock_blob_store.get_object.assert_called_once_with(key=object_key)
     assert result == {"test": "data"}
 
 
-def test_get_json_not_found(wasabi_adapter, mock_s3_client):
+def test_get_json_not_found(wasabi_adapter, mock_blob_store):
     """Test retrieving JSON data when not found."""
     object_key = "l1/test/nonexistent.json"
     
-    # Configure the mock to raise a proper ClientError
-    error_response = {"Error": {"Code": "NoSuchKey", "Message": "The specified key does not exist."}}
-    mock_s3_client.get_object.side_effect = ClientError(error_response, "GetObject")
+    # Configure the mock to raise a "not found" exception
+    error = Exception("NoSuchKey: The specified key does not exist")
+    mock_blob_store.get_object.side_effect = error
     
     result = wasabi_adapter.get_json(object_key)
     
-    mock_s3_client.get_object.assert_called_once()
+    mock_blob_store.get_object.assert_called_once()
     assert result is None
 
 
@@ -304,30 +311,18 @@ def test_store_global_bio(wasabi_adapter, mock_bio):
         mock_store_json.assert_called_once_with(s3_path, mock_bio.to_dict())
 
 
-def test_delete_user_data(wasabi_adapter, mock_s3_client):
+def test_delete_user_data(wasabi_adapter, mock_blob_store):
     """Test deleting all user data."""
     user_id = "test_user"
     
-    # Set up mock for list_objects_v2 and delete_objects
-    paginator = MagicMock()
-    mock_s3_client.get_paginator.return_value = paginator
-    
-    # Mock page with contents
-    page1 = {
-        "Contents": [
-            {"Key": "l1/topics/test_user/topic1.json"},
-            {"Key": "l1/topics/test_user/topic2.json"},
-        ]
-    }
-    # Mock page without contents
-    page2 = {}
-    
-    paginator.paginate.return_value = [page1, page2]
+    # Set up mock for list_objects
+    mock_blob_store.list_objects.return_value = [
+        {"Key": "l1/topics/test_user/topic1.json"},
+        {"Key": "l1/topics/test_user/topic2.json"},
+    ]
     
     result = wasabi_adapter.delete_user_data(user_id)
     
     assert result is True
-    assert mock_s3_client.get_paginator.call_count == 4  # One for each prefix
-    
-    # Should be called 4 times, once for each prefix (topics, clusters, shades, bios)
-    assert mock_s3_client.delete_objects.call_count == 4 
+    assert mock_blob_store.list_objects.call_count == 4  # One for each prefix
+    assert mock_blob_store.delete_object.call_count == 8  # Two objects per prefix, 4 prefixes 
