@@ -40,7 +40,12 @@ See the `examples/simple_document_analyzer.py` file for examples of how to use t
 
 You can also run the full example script:
 ```
-python scripts/test_l0_pipeline.py
+python scripts/test_l0_pipeline.py --path/to/your/file
+```
+
+To ingest all the files under `data`:
+```
+python scripts/process_all_data.py --skip-existing
 ```
 
 ## Implementation Details
