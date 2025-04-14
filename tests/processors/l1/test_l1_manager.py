@@ -6,7 +6,7 @@ from app.processors.l1.l1_generator import MergeShadeResult
 from app.models.l1.generation_result import L1GenerationResult
 from app.models.l1.bio import Bio
 from app.models.l1.note import Note
-from app.models.l1.shade import L1Shade
+from app.models.l1.shade import Shade as L1Shade
 
 
 @pytest.fixture

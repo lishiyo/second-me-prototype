@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional, Tuple, Union
 from datetime import datetime
 
 from app.models.l1.note import Note
-from app.models.l1.shade import L1Shade
+from app.models.l1.shade import Shade as L1Shade
 from app.services.llm_service import LLMService
 from app.providers.l1.wasabi_adapter import WasabiStorageAdapter
 

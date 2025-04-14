@@ -503,6 +503,6 @@ class BiographyGenerator:
         s3_path = f"l1/bios/{user_id}/{bio_type}/{bio_id}.json"
         
         # Store in Wasabi
-        self.wasabi_adapter.store_json(user_id, s3_path, complete_data)
+        self.wasabi_adapter.store_json(s3_path, complete_data)
         
         return s3_path 

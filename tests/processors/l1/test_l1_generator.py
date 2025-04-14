@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from app.processors.l1.l1_generator import L1Generator, MergeShadeResult
 from app.models.l1.bio import Bio
-from app.models.l1.shade import L1Shade
+from app.models.l1.shade import Shade as L1Shade
 
 
 @pytest.fixture

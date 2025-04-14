@@ -219,7 +219,6 @@ def test_store_bio_data(biography_generator, sample_bio, mock_wasabi_adapter):
     call_args = mock_wasabi_adapter.store_json.call_args[0]
     
     # Check args to store_json
-    assert call_args[0] == "test_user"  # user_id
-    assert call_args[1] == result  # s3_path
-    assert "bio" in call_args[2]  # complete_data
-    assert call_args[2]["bio"] == bio_data 
+    assert call_args[0] == result  # s3_path
+    assert "bio" in call_args[1]  # complete_data
+    assert call_args[1]["bio"] == bio_data 

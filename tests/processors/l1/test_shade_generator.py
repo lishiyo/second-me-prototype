@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import json
 
 from app.processors.l1.shade_generator import ShadeGenerator
-from app.models.l1.shade import L1Shade
+from app.models.l1.shade import Shade as L1Shade
 
 
 @pytest.fixture

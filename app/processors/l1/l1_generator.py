@@ -11,7 +11,7 @@ from datetime import datetime
 
 from app.models.l1.note import Note
 from app.models.l1.bio import Bio
-from app.models.l1.shade import L1Shade
+from app.models.l1.shade import Shade as L1Shade
 from app.processors.l1.topics_generator import TopicsGenerator
 from app.processors.l1.shade_generator import ShadeGenerator
 from app.processors.l1.biography_generator import BiographyGenerator

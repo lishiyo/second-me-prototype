@@ -24,6 +24,9 @@ openai>=1.0.0
 
 # Data processing
 numpy>=1.20.0
+scipy>=1.12.0                # For clustering algorithms
+scikit-learn>=1.4.0          # For machine learning algorithms
+sentence-transformers>=2.3.0 # For text embeddings
 tiktoken>=0.5.0               # For tokenization in chunking
 PyPDF2>=3.0.0                 # For PDF extraction
 python-docx>=0.8.11           # For DOCX extraction
