@@ -65,3 +65,53 @@ Both are stored in the document record in the database
 The extracted information helps in creating better semantic representations during vector indexing.
 
 They are later used to create Note objects for L1 layer.
+
+-----
+
+## Current State Analysis
+
+Our DocumentAnalyzer creates a single output (DocumentInsights) with title, summary, and keywords.
+
+The `lpm_kernel` system has:
+- InsightKernel that generates detailed analysis
+- SummaryKernel that builds on insights to create more concise output with keywords
+- The summary explicitly uses the insight as input
+
+## Implementation Plan
+
+1. Update Data Models
+Create separate DocumentInsight and DocumentSummary classes in models.py
+Update the result structures to match lpm_kernel's output format
+
+2. Split Analyzer Functionality
+Rename current DocumentAnalyzer to DocumentSummaryGenerator
+Create new DocumentInsightGenerator class
+Implement a coordinating class that orchestrates both processes
+
+3. Implement Insight Generation
+Add method to generate deep content analysis similar to `_insighter_doc`
+Focus on document content understanding and detailed analysis
+Implement the LLM prompt structure from lpm_kernel
+
+4. Enhance Summary Generation
+Modify current summary generation to use insights as input
+Update prompts to follow `_summarize_title_abstract_keywords` approach
+Ensure it extracts keywords consistently
+
+5. Update Document Processor
+Modify DocumentProcessor to run insight generation first
+Pass insight results to summary generation
+Store both results in appropriate storage locations
+
+6. Update Storage Integration
+Add storage methods for both insight and summary data
+Update database schemas if needed to store both types
+
+7. Test and Validate
+Update existing scripts like `test_l0_pipeline.py`.
+Create tests comparing outputs to lpm_kernel examples
+Verify both stages work correctly in sequence
+
+8. API Integration
+Update API endpoints to expose both insight and summary data
+Consider if we need separate endpoints for each.

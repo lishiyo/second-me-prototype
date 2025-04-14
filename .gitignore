@@ -2,11 +2,4 @@
 .env
 venv/
 
-app/core/__pycache__/
-app/providers/__pycache__/
-app/schemas/__pycache__/
-app/tests/__pycache__/
-app/utils/__pycache__/
-
-app/processors/__pycache__/
-app/processors/l0/__pycache__/
+__pycache__/

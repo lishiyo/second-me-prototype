@@ -6,12 +6,14 @@ from app.processors.l0.models import (
     ProcessingStatus,
     FileInfo,
     ChunkInfo,
-    DocumentInsights,
+    DocumentInsight,
+    DocumentSummary,
     ProcessingResult
 )
 from app.processors.l0.content_extractor import ContentExtractor
 from app.processors.l0.chunker import Chunker
 from app.processors.l0.document_analyzer import DocumentAnalyzer
+from app.processors.l0.document_insight_processor import DocumentInsightProcessor
 from app.processors.l0.embedding_generator import EmbeddingGenerator
 from app.processors.l0.utils import setup_logger, retry, safe_execute
 
@@ -23,7 +25,7 @@ class DocumentProcessor:
     Main orchestrator for the L0 processing pipeline.
     Manages the sequence of operations:
     1. Content extraction
-    2. Document analysis
+    2. Document analysis (two-stage: insight and summary)
     3. Chunking
     4. Embedding generation
     5. Storage coordination
@@ -39,7 +41,8 @@ class DocumentProcessor:
                  openai_api_key: Optional[str] = None,
                  chunking_strategy: str = "paragraph",
                  embedding_model: str = "text-embedding-3-small",
-                 analysis_model: str = "gpt-4o-mini",
+                 insight_model: str = "gpt-4o-mini",
+                 summary_model: str = "gpt-3.5-turbo",
                  user_id: str = "1"):  # Default user_id for MVP
         """
         Initialize the document processor with required components.
@@ -51,7 +54,8 @@ class DocumentProcessor:
             openai_api_key: OpenAI API key
             chunking_strategy: Strategy for chunking ("paragraph" or "fixed")
             embedding_model: OpenAI embedding model name
-            analysis_model: OpenAI analysis model name
+            insight_model: OpenAI model for generating deep insights
+            summary_model: OpenAI model for generating summaries
             user_id: User ID (defaults to "1" for MVP)
         """
         self.storage_provider = storage_provider
@@ -73,7 +77,14 @@ class DocumentProcessor:
         # Initialize component classes
         self.content_extractor = ContentExtractor()
         self.chunker = Chunker(max_chunk_size=1000, min_chunk_size=100, overlap=50)
-        self.document_analyzer = DocumentAnalyzer(api_key=self.openai_api_key, model=analysis_model)
+        
+        # Two-stage document analysis processor
+        self.document_insight_processor = DocumentInsightProcessor(
+            api_key=self.openai_api_key,
+            insight_model=insight_model,
+            summary_model=summary_model
+        )
+        
         self.embedding_generator = EmbeddingGenerator(api_key=self.openai_api_key, model=embedding_model)
         
         self.chunking_strategy = chunking_strategy
@@ -133,9 +144,20 @@ class DocumentProcessor:
             logger.info(f"Extracting content from document: {file_info.filename}")
             extracted_content = self.content_extractor.extract(file_info)
             
-            # Step 3: Analyze document for insights
-            logger.info(f"Analyzing document content for insights: {file_info.filename}")
-            insights = self.document_analyzer.analyze(extracted_content, file_info.filename)
+            # Step 3: Analyze document using two-stage process
+            logger.info(f"Using two-stage analysis for document: {file_info.filename}")
+            analysis_results = self.document_insight_processor.process_document(
+                content=extracted_content,
+                filename=file_info.filename,
+                document_id=document_id
+            )
+            insight = analysis_results["insight"]
+            summary = analysis_results["summary"]
+            
+            # Store both insight and summary
+            logger.info(f"Storing document insight and summary")
+            insight_path = self._store_insight(document_id, insight)
+            summary_path = self._store_summary(document_id, summary)
             
             # Step 4: Chunk the content
             logger.info(f"Chunking document content: {file_info.filename}")
@@ -149,11 +171,7 @@ class DocumentProcessor:
             logger.info(f"Storing {len(chunks_with_embeddings)} chunks and embeddings")
             stored_chunks = self._store_chunks_and_embeddings(chunks_with_embeddings, file_info)
             
-            # Step 7: Store insights in S3
-            logger.info(f"Storing document insights")
-            self._store_insights(document_id, insights)
-            
-            # Step 8: Update document status to "completed" in the database
+            # Step 7: Update document status to "completed" in the database
             self._update_document_status(
                 db_session, 
                 document_id, 
@@ -165,7 +183,8 @@ class DocumentProcessor:
             result = ProcessingResult.success(
                 document_id=document_id,
                 chunk_count=len(stored_chunks),
-                insights=insights
+                insight=insight,
+                summary=summary
             )
             
             logger.info(f"Successfully processed document {document_id}: {file_info.filename}")
@@ -361,7 +380,7 @@ class DocumentProcessor:
                 
                 self.storage_provider.put_object(
                     s3_key,
-                    content_str.encode('utf-8'),
+                    content_str.encode('utf-8'), # store the chunk content
                     string_metadata
                 )
                 
@@ -392,35 +411,68 @@ class DocumentProcessor:
         
         return chunks
     
-    def _store_insights(self, document_id: str, insights: DocumentInsights) -> str:
+    def _store_insight(self, document_id: str, insight: DocumentInsight) -> str:
         """
-        Store document insights in the storage provider.
+        Store document insight in the storage provider.
         
         Args:
             document_id: Document ID
-            insights: Document insights
+            insight: Document insight
             
         Returns:
-            S3 path where insights were stored
+            S3 path where insight was stored
         """
         import json
         
-        # Create insights object
-        insights_dict = {
-            "title": insights.title,
-            "summary": insights.summary,
-            "keywords": insights.keywords,
+        # Create insight object
+        insight_dict = {
+            "title": insight.title,
+            "insight": insight.insight,
             "generated_at": datetime.now(timezone.utc).isoformat()
         }
         
         # Convert to JSON
-        insights_json = json.dumps(insights_dict, ensure_ascii=False, indent=2)
+        insight_json = json.dumps(insight_dict, ensure_ascii=False, indent=2)
         
         # Store in S3
-        s3_key = f"tenant/{self.user_id}/metadata/{document_id}/insights.json"
+        s3_key = f"tenant/{self.user_id}/metadata/{document_id}/insight.json"
         s3_uri = self.storage_provider.put_object(
             s3_key,
-            insights_json.encode('utf-8'),
+            insight_json.encode('utf-8'),
+            {"document_id": str(document_id)}
+        )
+        
+        return s3_uri
+    
+    def _store_summary(self, document_id: str, summary: DocumentSummary) -> str:
+        """
+        Store document summary in the storage provider.
+        
+        Args:
+            document_id: Document ID
+            summary: Document summary
+            
+        Returns:
+            S3 path where summary was stored
+        """
+        import json
+        
+        # Create summary object
+        summary_dict = {
+            "title": summary.title,
+            "summary": summary.summary,
+            "keywords": summary.keywords,
+            "generated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Convert to JSON
+        summary_json = json.dumps(summary_dict, ensure_ascii=False, indent=2)
+        
+        # Store in S3
+        s3_key = f"tenant/{self.user_id}/metadata/{document_id}/summary.json"
+        s3_uri = self.storage_provider.put_object(
+            s3_key,
+            summary_json.encode('utf-8'),
             {"document_id": str(document_id)}
         )
         
