@@ -48,7 +48,7 @@
 
 4. **PostgreSQL Database**
    - Stores user information
-   - Tracks document metadata
+   - Tracks document metadata, including title, insights, and summaries
    - Records training job status
    - Tracks minimal chat session metadata (paths to files in Wasabi)
    - Uses row-level security (future enhancement)
@@ -103,6 +103,8 @@
 4. L0 Process:
    - Uploads original document to Wasabi raw folder
    - Chunks document by text semantics
+   - Generates document insights and summaries using AI
+   - Stores insights and summaries in both Wasabi and PostgreSQL
    - Stores each chunk as a separate file in Wasabi chunks folder
    - Embeds chunks using OpenAI embeddings
    - Stores embeddings and pointers (s3_path) in Weaviate, but not the chunk text itself
@@ -242,8 +244,11 @@ tenant/1/                              # User ID 1 (only user for MVP)
   │       └── training_inputs/         # Final training inputs
   │           ├── dataset.json         # Merged training dataset
   │           └── ...
-  ├── metadata/                        # L1 hierarchical structure
-  │   ├── topics.json
+  ├── metadata/                        # Document metadata
+  │   ├── doc1/                       # Per-document metadata
+  │   │   ├── insight.json            # AI-generated document insights
+  │   │   └── summary.json            # AI-generated document summary
+  │   ├── topics.json                 # L1 hierarchical structure
   │   ├── entities.json
   │   └── ...
   └── lora/                            # Training artifacts
@@ -293,7 +298,10 @@ CREATE TABLE documents (
   s3_path TEXT NOT NULL,
   uploaded_at TIMESTAMP NOT NULL DEFAULT NOW(),
   processed BOOLEAN DEFAULT FALSE,
-  chunk_count INTEGER DEFAULT 0
+  chunk_count INTEGER DEFAULT 0,
+  title TEXT,
+  insight JSONB,
+  summary JSONB
 );
 
 -- Training jobs

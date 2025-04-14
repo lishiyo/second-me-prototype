@@ -39,6 +39,9 @@ class Document(Base):
     uploaded_at = Column(DateTime, nullable=False, default=datetime.now(timezone.utc))
     processed = Column(Boolean, default=False)
     chunk_count = Column(Integer, default=0)
+    title = Column(Text, nullable=True)
+    insight = Column(JSONB, nullable=True)
+    summary = Column(JSONB, nullable=True)
     
     # Relationships
     user = relationship("User", back_populates="documents")
@@ -214,7 +217,10 @@ class RelationalDB:
                       user_id: str, 
                       filename: str, 
                       content_type: str, 
-                      s3_path: str) -> Document:
+                      s3_path: str,
+                      title: Optional[str] = None,
+                      insight: Optional[Dict] = None,
+                      summary: Optional[Dict] = None) -> Document:
         """
         Create a new document record.
         
@@ -224,6 +230,9 @@ class RelationalDB:
             filename: Original filename
             content_type: MIME type of the document
             s3_path: Path to the document in Wasabi S3
+            title: Optional document title
+            insight: Optional document insight data
+            summary: Optional document summary data
             
         Returns:
             Created document object
@@ -233,7 +242,10 @@ class RelationalDB:
                 user_id=user_id,
                 filename=filename,
                 content_type=content_type,
-                s3_path=s3_path
+                s3_path=s3_path,
+                title=title,
+                insight=insight,
+                summary=summary
             )
             session.add(document)
             session.commit()
@@ -282,7 +294,10 @@ class RelationalDB:
                                 session: Session, 
                                 document_id: str, 
                                 processed: bool, 
-                                chunk_count: int) -> Optional[Document]:
+                                chunk_count: int,
+                                title: Optional[str] = None,
+                                insight: Optional[Dict] = None,
+                                summary: Optional[Dict] = None) -> Optional[Document]:
         """
         Update document processing status.
         
@@ -291,6 +306,9 @@ class RelationalDB:
             document_id: Document ID to update
             processed: Whether the document has been processed
             chunk_count: Number of chunks generated
+            title: Optional document title
+            insight: Optional document insight data
+            summary: Optional document summary data
             
         Returns:
             Updated document object if found, None otherwise
@@ -300,6 +318,15 @@ class RelationalDB:
             if document:
                 document.processed = processed
                 document.chunk_count = chunk_count
+                
+                # Update optional fields if provided
+                if title:
+                    document.title = title
+                if insight:
+                    document.insight = insight
+                if summary:
+                    document.summary = summary
+                    
                 session.commit()
                 session.refresh(document)
             return document

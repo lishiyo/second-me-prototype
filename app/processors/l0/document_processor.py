@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Union
+from sqlalchemy import inspect
 
 from app.processors.l0.models import (
     ProcessingStatus,
@@ -17,6 +18,7 @@ from app.processors.l0.document_insight_processor import DocumentInsightProcesso
 from app.processors.l0.embedding_generator import EmbeddingGenerator
 from app.processors.l0.utils import setup_logger, retry, safe_execute
 from app.core.config import settings
+from app.providers.rel_db import Document
 
 # Set up logger
 logger = setup_logger(__name__)
@@ -141,6 +143,22 @@ class DocumentProcessor:
         db_session = self.rel_db_provider.get_db_session()
         
         try:
+            # Create document record in the database first if it doesn't exist
+            s3_path = f"tenant/{self.user_id}/raw/{document_id}_{file_info.filename}"
+            document = db_session.query(Document).filter(
+                Document.id == document_id
+            ).first()
+            
+            if not document:
+                logger.info(f"Creating document record in database for {document_id}")
+                document = self.rel_db_provider.create_document(
+                    session=db_session,
+                    user_id=self.user_id,
+                    filename=file_info.filename,
+                    content_type=file_info.content_type,
+                    s3_path=s3_path
+                )
+            
             # Update document status to "processing" in the database
             self._update_document_status(db_session, document_id, ProcessingStatus.PROCESSING)
             
@@ -162,7 +180,7 @@ class DocumentProcessor:
             insight = analysis_results["insight"]
             summary = analysis_results["summary"]
             
-            # Store both insight and summary
+            # Store both insight and summary in Wasabi + PostgreSQL
             logger.info(f"Storing document insight and summary")
             insight_path = self._store_insight(document_id, insight)
             summary_path = self._store_summary(document_id, summary)
@@ -175,7 +193,7 @@ class DocumentProcessor:
             logger.info(f"Generating embeddings for {len(chunks)} chunks")
             chunks_with_embeddings = self.embedding_generator.generate_embeddings(chunks)
             
-            # Step 6: Store chunks and their embeddings
+            # Step 6: Store chunks and their embeddings in Wasabi + Weaviate
             logger.info(f"Storing {len(chunks_with_embeddings)} chunks and embeddings")
             stored_chunks = self._store_chunks_and_embeddings(chunks_with_embeddings, file_info)
             
@@ -421,7 +439,7 @@ class DocumentProcessor:
     
     def _store_insight(self, document_id: str, insight: DocumentInsight) -> str:
         """
-        Store document insight in the storage provider.
+        Store document insight in the storage provider and relational database.
         
         Args:
             document_id: Document ID
@@ -450,11 +468,30 @@ class DocumentProcessor:
             {"document_id": str(document_id)}
         )
         
+        # Store in relational database
+        try:
+            db_session = self.rel_db_provider.get_db_session()
+            document = db_session.query(Document).filter(
+                Document.id == document_id
+            ).first()
+            
+            if document:
+                logger.info(f"Updating document {document_id} with insight")
+                document.insight = insight_dict
+                document.title = insight.title
+                db_session.commit()
+            else:
+                logger.warning(f"Document {document_id} not found in database when storing insight. This should not happen.")
+            
+            db_session.close()
+        except Exception as e:
+            logger.error(f"Error storing insight in database: {str(e)}")
+        
         return s3_uri
     
     def _store_summary(self, document_id: str, summary: DocumentSummary) -> str:
         """
-        Store document summary in the storage provider.
+        Store document summary in the storage provider and relational database.
         
         Args:
             document_id: Document ID
@@ -483,5 +520,26 @@ class DocumentProcessor:
             summary_json.encode('utf-8'),
             {"document_id": str(document_id)}
         )
+        
+        # Store in relational database
+        try:
+            db_session = self.rel_db_provider.get_db_session()
+            document = db_session.query(Document).filter(
+                Document.id == document_id
+            ).first()
+            
+            if document:
+                logger.info(f"Updating document {document_id} with summary")
+                document.summary = summary_dict
+                # Only set title from summary if not already set from insight
+                if not document.title:
+                    document.title = summary.title
+                db_session.commit()
+            else:
+                logger.warning(f"Document {document_id} not found in database when storing summary. This should not happen.")
+                
+            db_session.close()
+        except Exception as e:
+            logger.error(f"Error storing summary in database: {str(e)}")
         
         return s3_uri

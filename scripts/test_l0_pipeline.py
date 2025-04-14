@@ -108,26 +108,7 @@ def process_file(file_path, document_processor):
         content=content     # Actual content
     )
     
-    # Create document in the database
-    db_session = document_processor.rel_db_provider.get_db_session()
-    try:
-        # Create document record
-        document_processor.rel_db_provider.create_document(
-            session=db_session,
-            user_id=document_processor.user_id,  # User ID from document_processor
-            filename=filename,
-            content_type=content_type,
-            s3_path=f"tenant/{document_processor.user_id}/raw/{document_id}_{filename}"
-        )
-        db_session.commit()
-    except Exception as e:
-        logger.error(f"Error creating document record: {e}")
-        db_session.rollback()
-        raise
-    finally:
-        document_processor.rel_db_provider.close_db_session(db_session)
-    
-    # Process the document
+    # Process the document - document creation now happens inside process_document
     result = document_processor.process_document(file_info)
     
     # Return the processing result
