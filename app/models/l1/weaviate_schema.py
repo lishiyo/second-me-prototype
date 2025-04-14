@@ -1,6 +1,7 @@
 """
 Weaviate schema definitions for L1 data.
 This module contains the schema configurations for Weaviate collections used in L1.
+Important: We are using Weaviate v4 client, with multi-tenancy enabled.
 """
 
 from weaviate.classes.config import Configure, Property, DataType
@@ -9,11 +10,12 @@ from weaviate.classes.config import Configure, Property, DataType
 TENANT_TOPIC_SCHEMA = {
     "name": "TenantTopic",
     "description": "A topic grouping related documents",
-    "vectorizer": "none",  # We'll provide our own vectors
-    "multi_tenancy": {  # Enable tenant support
-        "enabled": True,
-        "autoTenantCreation": True
-    },
+    "vectorizer": Configure.Vectorizer.none(),  # We'll provide our own vectors
+    "multi_tenancy": Configure.multi_tenancy(
+        enabled=True,
+        auto_tenant_creation=True,
+        auto_tenant_activation=True
+    ),
     "properties": [
         Property(
             name="topic_id",
@@ -52,11 +54,12 @@ TENANT_TOPIC_SCHEMA = {
 TENANT_CLUSTER_SCHEMA = {
     "name": "TenantCluster",
     "description": "A cluster of semantically related documents",
-    "vectorizer": "none",  # We'll provide our own vectors
-    "multi_tenancy": {  # Enable tenant support
-        "enabled": True,
-        "autoTenantCreation": True
-    },
+    "vectorizer": Configure.Vectorizer.none(),  # We'll provide our own vectors
+    "multi_tenancy": Configure.multi_tenancy(
+        enabled=True,
+        auto_tenant_creation=True,
+        auto_tenant_activation=True
+    ),
     "properties": [
         Property(
             name="cluster_id",
@@ -101,11 +104,12 @@ TENANT_CLUSTER_SCHEMA = {
 TENANT_SHADE_SCHEMA = {
     "name": "TenantShade",
     "description": "A knowledge aspect extracted from document clusters",
-    "vectorizer": "none",  # We'll provide our own vectors
-    "multi_tenancy": {  # Enable tenant support
-        "enabled": True,
-        "autoTenantCreation": True
-    },
+    "vectorizer": Configure.Vectorizer.none(),  # We'll provide our own vectors
+    "multi_tenancy": Configure.multi_tenancy(
+        enabled=True,
+        auto_tenant_creation=True,
+        auto_tenant_activation=True
+    ),
     "properties": [
         Property(
             name="shade_id",
@@ -148,6 +152,12 @@ TENANT_SHADE_SCHEMA = {
             description="Creation timestamp",
             data_type=DataType.DATE,
             indexing={"filterable": True, "searchable": False}
+        ),
+        Property(
+            name="timeline",
+            description="Timeline data for chronological events",
+            data_type=DataType.TEXT,
+            indexing={"filterable": False, "searchable": True}
         )
     ]
 }

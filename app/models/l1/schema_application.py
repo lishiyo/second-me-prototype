@@ -73,6 +73,7 @@ def apply_weaviate_schema(vector_db: VectorDB = None) -> bool:
     Returns:
         bool: True if successful, False otherwise.
     """
+    created_locally = False
     try:
         # Create VectorDB instance if not provided
         if vector_db is None:
@@ -81,6 +82,7 @@ def apply_weaviate_schema(vector_db: VectorDB = None) -> bool:
                 api_key=os.environ.get("WEAVIATE_API_KEY"),
                 embedding_model=os.environ.get("EMBEDDING_MODEL")
             )
+            created_locally = True
         
         schemas = get_schema_definitions()
         success = True
@@ -115,6 +117,13 @@ def apply_weaviate_schema(vector_db: VectorDB = None) -> bool:
     except Exception as e:
         logger.error(f"Error connecting to Weaviate: {e}")
         return False
+    finally:
+        # Close the client if we created it locally
+        if created_locally and vector_db is not None:
+            try:
+                vector_db.client.close()
+            except Exception as e:
+                logger.error(f"Error closing Weaviate client: {e}")
 
 def apply_all_schemas() -> bool:
     """
