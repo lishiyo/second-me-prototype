@@ -238,7 +238,9 @@ Subtasks 1-6 → Subtask 7
 1. Create or update API routes in app/api/ingest.py:
    - POST endpoint for document ingestion
    - GET endpoint for checking processing status
-   - GET endpoint for retrieving document metadata
+   - GET endpoint for retrieving document metadata from our relational db
+   - GET endpoint for searching with a query and retrieving the relevant chunks
+   - GET endpoint for searching with a query and retrieving an answer from OpenAI
 
 2. Implement background task processing:
    - Use Redis queue for document processing tasks
