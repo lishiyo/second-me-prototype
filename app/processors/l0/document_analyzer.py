@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from app.processors.l0.models import DocumentInsight, DocumentSummary
 from app.processors.l0.utils import retry, setup_logger
+from app.processors.l0.prompts import DOCUMENT_INSIGHT_PROMPT, DOCUMENT_SUMMARY_PROMPT, DOCUMENT_TITLE_SUMMARY_PROMPT
 
 # Set up logger
 logger = setup_logger(__name__)
@@ -116,23 +117,12 @@ class DocumentInsightGenerator:
         prompt = f"""
         {filename_info}Document content:
         {content}
-        
-        Please provide a detailed analysis of this document with:
-        1. A title that captures the main subject
-        2. A comprehensive insight that includes:
-           - An overview of the main content
-           - Breakdown of key sections/topics
-           - Notable details or findings
-        
-        Format your response as JSON with 'title' and 'insight' fields.
-        For the insight, provide rich, detailed analysis that would help someone understand 
-        the document without reading it. Include specific information from the text.
         """
         
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "You are a document insight generator that creates deep, comprehensive analysis of documents."},
+                {"role": "system", "content": DOCUMENT_INSIGHT_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=self.max_tokens,
@@ -146,7 +136,30 @@ class DocumentInsightGenerator:
         result_json = json.loads(result)
         
         title = result_json.get("title", self._fallback_title(content, filename))
-        insight = result_json.get("insight", "No insight available.")
+        
+        # Get the insight, which could be a string or a nested object
+        insight_data = result_json.get("insight", {})
+        if isinstance(insight_data, str):
+            insight = insight_data
+        else:
+            # Format the structured insight into a string
+            overview = insight_data.get("overview", "")
+            breakdown = insight_data.get("breakdown", {})
+            
+            formatted_insight = overview + "\n\n"
+            
+            for section_title, conclusions in breakdown.items():
+                formatted_insight += f"{section_title}\n"
+                for conclusion in conclusions:
+                    if len(conclusion) >= 2:
+                        key_point, explanation = conclusion[0], conclusion[1]
+                        formatted_insight += f"• {key_point}: {explanation}\n"
+                formatted_insight += "\n"
+            
+            insight = formatted_insight.strip()
+        
+        if not insight:
+            insight = "No insight available."
         
         return title, insight
     
@@ -268,18 +281,14 @@ class DocumentSummaryGenerator:
         Previous insight:
         {insight}
         
-        Based on the document content and the previous insight, please provide:
-        1. A concise summary (3-5 sentences)
-        2. Up to 10 relevant keywords or key phrases
-        
-        Format your response as JSON with 'summary' and 'keywords' fields.
-        The summary should be more concise than the insight, distilling the most important information.
+        Document content sample (first 1000 chars):
+        {content[:1000]}...
         """
         
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "You are a document summary generator that extracts concise summaries and keywords from documents."},
+                {"role": "system", "content": DOCUMENT_SUMMARY_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=self.max_tokens,
@@ -290,17 +299,114 @@ class DocumentSummaryGenerator:
         result = response.choices[0].message.content
         
         # Parse the result assuming it's JSON
-        result_json = json.loads(result)
+        try:
+            result_json = json.loads(result)
+            summary = result_json.get("summary", "No summary available.")
+            keywords = result_json.get("keywords", ["document"])
+            
+            # Ensure keywords is a list
+            if not isinstance(keywords, list):
+                keywords = [keywords]
+                
+            # Limit number of keywords if needed
+            keywords = keywords[:10]
+            
+            return summary, keywords
+        except json.JSONDecodeError:
+            logger.error("Failed to parse summary response as JSON")
+            return "No summary available.", ["document"]
+
+    def generate_title_and_summary(self, content: str, filename: str = "") -> Dict[str, Any]:
+        """
+        Generate title, summary and keywords in a single call (alternative approach).
+        This is similar to the summarizer method in lpm_kernel.
         
-        summary = result_json.get("summary", "No summary available.")
-        keywords = result_json.get("keywords", [])
+        Args:
+            content: Document content text
+            filename: Original filename (optional)
+            
+        Returns:
+            Dictionary with title, summary, and keywords
+        """
+        # Limit content length
+        if len(content) > 8000:
+            content = content[:8000] + "..."
         
-        # Ensure keywords are a list
-        if isinstance(keywords, str):
-            # If keywords are a comma-separated string, split them
-            keywords = [k.strip() for k in keywords.split(",")]
+        # Prepare filename description
+        filename_desc = f"Filename: {filename}" if filename else ""
         
-        return summary, keywords
+        # Format the prompt with content and filename
+        # Use string replacement instead of format() to avoid issues with curly braces in the prompt
+        prompt = DOCUMENT_TITLE_SUMMARY_PROMPT.replace("{filename_desc}", filename_desc).replace("{content}", content)
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a document analyzer that extracts the essential information from documents. Provide your analysis in JSON format with 'title', 'summary', and 'keywords' fields."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=self.max_tokens,
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+            
+            result = response.choices[0].message.content
+            
+            # Parse the result as JSON
+            result_json = json.loads(result)
+            
+            title = result_json.get("title", self._fallback_title(content, filename))
+            summary = result_json.get("summary", "No summary available.")
+            keywords = result_json.get("keywords", ["document"])
+            
+            # Ensure keywords is a list
+            if not isinstance(keywords, list):
+                keywords = [keywords]
+                
+            return {
+                "title": title,
+                "summary": summary,
+                "keywords": keywords
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating title and summary: {str(e)}")
+            return {
+                "title": self._fallback_title(content, filename),
+                "summary": "Failed to generate summary due to API error.",
+                "keywords": ["document"]
+            }
+
+    def _fallback_title(self, content: str, filename: str = "") -> str:
+        """
+        Extract title from document content or fallback to filename.
+        
+        Args:
+            content: Document content text
+            filename: Original filename
+            
+        Returns:
+            Extracted title
+        """
+        # Try to find a title in the first few lines of the document
+        lines = content.split('\n')
+        for i in range(min(5, len(lines))):
+            line = lines[i].strip()
+            # Look for lines that might be titles (short, no punctuation at end)
+            if line and len(line) < 100 and not line.endswith(('.', ':', ';', '!', '?')):
+                # Clean up markdown heading symbols
+                line = re.sub(r'^#+\s+', '', line)
+                return line
+        
+        # Fallback to filename or generic title
+        if filename:
+            # Remove extension and replace underscores/hyphens with spaces
+            base_name = os.path.splitext(os.path.basename(filename))[0]
+            title = re.sub(r'[_-]', ' ', base_name).title()
+            return title
+            
+        return "Untitled Document"
 
 
 # For backward compatibility, alias DocumentSummaryGenerator as DocumentAnalyzer

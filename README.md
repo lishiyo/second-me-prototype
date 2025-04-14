@@ -33,6 +33,7 @@ Required environment variables:
 1. Create a virtual environment:
 
 ```bash
+python --version # this should be python 3.12!
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```

@@ -2,6 +2,7 @@
 """
 Test script for L0 processing pipeline integration.
 This script demonstrates the complete L0 processing flow with a real document.
+This uses the two-step processor that first generates an insight and then a summary.
 
 Usage:
     python scripts/test_l0_pipeline.py [file_path]

@@ -3,7 +3,9 @@ from typing import Optional, Dict, Any
 from app.processors.l0.models import (
     DocumentInsight, 
     DocumentSummary,
-    FileInfo
+    FileInfo,
+    BioInfo,
+    InsighterInput
 )
 from app.processors.l0.document_analyzer import (
     DocumentInsightGenerator,
@@ -103,4 +105,121 @@ class DocumentInsightProcessor:
             content=file_info.content,
             filename=file_info.filename,
             document_id=file_info.document_id
+        )
+        
+    def process_with_bio(self, file_info: FileInfo, bio_info: BioInfo) -> Dict[str, Any]:
+        """
+        Process a document with biographical information, similar to _insighter_doc in lpm_kernel.
+        This can provide more personalized insights based on user information.
+        
+        Args:
+            file_info: FileInfo object containing document metadata and content
+            bio_info: BioInfo object containing user biographical information
+            
+        Returns:
+            Dictionary with insight and summary objects
+        """
+        logger.info(f"Processing document with biographical context: {file_info.filename}")
+        
+        # First, generate the basic insight using standard processing
+        result = self.process_document(
+            content=file_info.content,
+            filename=file_info.filename,
+            document_id=file_info.document_id
+        )
+        
+        insight = result["insight"]
+        
+        # Add biographical context to the insight
+        insight.insight = self._add_bio_context_to_insight(insight.insight, bio_info)
+        
+        # Re-generate the summary with the bio-enhanced insight
+        summary = self.summary_generator.generate_summary(file_info.content, insight, file_info.filename)
+        
+        return {
+            "insight": insight,
+            "summary": summary
+        }
+    
+    def _add_bio_context_to_insight(self, insight: str, bio_info: BioInfo) -> str:
+        """
+        Add biographical context to an insight.
+        
+        Args:
+            insight: Original document insight
+            bio_info: User biographical information
+            
+        Returns:
+            Enhanced insight with biographical context
+        """
+        # Only add biographical context if we have some bio information
+        if not (bio_info.about_me or bio_info.global_bio or bio_info.status_bio):
+            return insight
+            
+        # Get the biographical context
+        bio_context = self._generate_bio_context(insight, bio_info)
+        
+        # Add the biographical context to the insight
+        enhanced_insight = insight + "\n\n" + bio_context
+        
+        return enhanced_insight
+    
+    def _generate_bio_context(self, insight: str, bio_info: BioInfo) -> str:
+        """
+        Generate biographical context for an insight.
+        
+        Args:
+            insight: Original document insight
+            bio_info: User biographical information
+            
+        Returns:
+            Biographical context
+        """
+        try:
+            # Use the insight generator's client to generate bio context
+            prompt = f"""
+            Based on the following user information:
+            
+            User self-description: {bio_info.about_me}
+            User's interests and background: {bio_info.global_bio}
+            User's recent activities: {bio_info.status_bio}
+            
+            And the following document insight:
+            
+            {insight}
+            
+            Please generate a brief paragraph (3-5 sentences) that connects the document content to the user's 
+            personal context, interests, or recent activities. Make the connection feel natural and relevant.
+            """
+            
+            response = self.insight_generator.client.chat.completions.create(
+                model=self.insight_generator.model,
+                messages=[
+                    {"role": "system", "content": "You are an assistant that helps connect document content to a user's personal context."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=300,
+                temperature=0.4
+            )
+            
+            bio_context = "Personal Context: " + response.choices[0].message.content.strip()
+            return bio_context
+            
+        except Exception as e:
+            logger.error(f"Error generating biographical context: {str(e)}")
+            return "Personal Context: Unable to generate personalized context."
+    
+    def process_from_insighter_input(self, input_data: InsighterInput) -> Dict[str, Any]:
+        """
+        Process from an InsighterInput object, similar to how lpm_kernel processes.
+        
+        Args:
+            input_data: InsighterInput object containing file and bio information
+            
+        Returns:
+            Dictionary with insight and summary objects
+        """
+        return self.process_with_bio(
+            file_info=input_data.file_info,
+            bio_info=input_data.bio_info
         ) 
