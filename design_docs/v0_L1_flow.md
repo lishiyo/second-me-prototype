@@ -98,6 +98,8 @@ L0 Documents → Extract Notes & Memory → Generate Topics → Generate Shades 
    - Represents a knowledge aspect extracted from document clusters
    - Includes insights, confidence levels, and source documents
    - Stores relationships to related shades
+   - Includes timeline data to track chronological progression of events
+   - Supports improvement/updates to existing shades with new information
 
 6. **Bio** (`app/models/bio.py`)
    - Represents a user biography with different perspective views
@@ -466,6 +468,11 @@ async def generate_shades(user_id: str, notes: List[Note], clusters: Dict) -> Li
                 shade_id = str(uuid.uuid4())
                 shade["id"] = shade_id
                 
+                # Store timeline data in shade metadata
+                if "timeline" in shade:
+                    # Ensure timeline data is properly stored
+                    pass
+                
                 # Store shade in Wasabi
                 await wasabi_adapter.store_shade(
                     user_id=user_id,
@@ -506,6 +513,11 @@ async def merge_shades(user_id: str, shades: List[Dict]) -> Dict:
         # Store merged shades in Wasabi
         for merged_shade in merged_result.merge_shade_list:
             merged_id = str(uuid.uuid4())
+            
+            # Ensure timeline data is preserved in merged shades
+            if "timeline" in merged_shade:
+                # Process and store timeline data
+                pass
             
             await wasabi_adapter.store_merged_shade(
                 user_id=user_id,
@@ -666,8 +678,10 @@ async def generate_l1_from_l0(user_id: str) -> L1GenerationResult:
 
 5. **LLM Optimization**
    - Implement retry logic with backoff
+   - Implement parameter adjustment strategy (especially top_p) for failed LLM calls
    - Optimize prompt templates for token efficiency
    - Cache LLM results where appropriate
+   - Support for updating and improving existing shades with new data
 
 ## Potential Challenges and Risks
 
@@ -690,6 +704,8 @@ async def generate_l1_from_l0(user_id: str) -> L1GenerationResult:
 5. **LLM Reliability**
    - Challenge: Handling LLM API failures and rate limits
    - Mitigation: Implement backoff strategies and fallback mechanisms
+   - Dynamic parameter adjustment for failed calls (adjusting top_p, temperature, etc.)
+   - Provide detailed error messages for debugging API failures
 
 6. **Versioning Conflicts**
    - Challenge: Managing updates to previously processed data

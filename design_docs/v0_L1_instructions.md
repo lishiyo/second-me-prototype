@@ -162,6 +162,16 @@ The L1 layer processes data from the L0 layer to create higher-level knowledge r
 - Unit tests for each adapter
 - Integration tests for adapter interactions
 
+Suggestions for improving generators:
+
+ShadeGenerator:
+
+- Add embedding calculations for merged shades similar to LPM's _calculate_merged_shades_center_embed method
+- Split the shade improvement logic (updating existing shades with new data) from generation
+- Enhance perspective shifting to match LPM's implementation
+- Add timeline support to our shade model
+- Implement retry mechanism with parameter adjustments for LLM API calls
+
 ## Phase 2: Core Processing Phase
 
 ### Subtask 2.1: Implement L1Generator Base Class
@@ -176,17 +186,21 @@ The L1 layer processes data from the L0 layer to create higher-level knowledge r
    - Add constructor with configurable parameters
    - Implement LLM interaction methods
    - Implement retry logic for API calls
+   - Add parameter adjustment strategy for failed LLM calls
+   - Implement dynamic adjustment of top_p parameter for improved generation
    - Add utility methods for common operations
 2. Implement caching mechanisms:
    - Add in-memory cache for frequent operations
    - Implement TTL-based cache expiration
 3. Set up logging and monitoring:
    - Implement detailed logging for generator operations
+   - Add detailed error logging for API failures with parameter information
    - Add performance metrics collection
 
 **Definition of Done**:
 - L1Generator class implemented with proper error handling
 - LLM interaction methods tested with mock responses
+- Retry logic with parameter adjustment tested
 - Caching mechanisms verified
 - Logging and monitoring in place
 
@@ -254,11 +268,18 @@ The L1 layer processes data from the L0 layer to create higher-level knowledge r
    - Add constructor with configurable parameters
    - Implement LLM prompts for shade generation
    - Add methods for confidence scoring
+   - Implement timeline extraction and structuring
+   - Add method for updating existing shades with new information
 2. Implement the `generate_shade` method:
    - Process cluster notes
    - Generate coherent narratives from related documents
    - Assign confidence levels to generated insights
-3. Integrate with Topics Generator:
+   - Extract timeline information from notes
+3. Implement the `improve_shade` method:
+   - Process new notes against existing shade
+   - Update shade content with new information
+   - Maintain timeline consistency
+4. Integrate with Topics Generator:
    - Use cluster information to inform shade generation
    - Ensure consistent naming and organization
 
@@ -266,6 +287,8 @@ The L1 layer processes data from the L0 layer to create higher-level knowledge r
 - ShadeGenerator class implemented with configurable parameters
 - Shade generation tested with sample clusters
 - Quality of generated shades evaluated
+- Timeline extraction and storage working correctly
+- Shade improvement functionality tested
 
 ## Phase 3: Advanced Processing Phase
 
