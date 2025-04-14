@@ -5,10 +5,11 @@ This script will find all files in the data directory and process them
 through the L0 pipeline, storing results in all backend systems.
 
 Usage:
-    python scripts/process_all_data.py [--skip-existing]
+    python scripts/process_all_data.py [--skip-existing] [--data-dir PATH]
     
 Optional arguments:
     --skip-existing: Skip files that have already been processed
+    --data-dir: Path to directory containing files to process (default: 'data')
 """
 
 import os
@@ -133,6 +134,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Process all files in data directory')
     parser.add_argument('--skip-existing', action='store_true', 
                         help='Skip files that have already been processed')
+    parser.add_argument('--data-dir', type=str, default='data',
+                        help='Path to directory containing files to process')
     return parser.parse_args()
 
 def main():
@@ -186,8 +189,8 @@ def main():
             overlap=settings.OVERLAP
         )
         
-        # Get data directory path
-        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+        # Get data directory path from arguments
+        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', args.data_dir))
         logger.info(f"Scanning directory: {data_dir}")
         
         # Get all files in the data directory

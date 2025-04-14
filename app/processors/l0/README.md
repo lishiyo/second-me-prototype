@@ -46,6 +46,9 @@ python scripts/test_l0_pipeline.py --path/to/your/file
 To ingest all the files under `data`:
 ```
 python scripts/process_all_data.py --skip-existing
+
+// To use a custom directory
+python scripts/process_all_data.py --data-dir path/to/your/directory
 ```
 
 To query the relational database:

@@ -141,10 +141,10 @@ python scripts/test_l0_pipeline.py  # Integration test with real document
 
 ### Current Status
 - Completed L0 Processing Pipeline implementation (subtasks 1-6 from v0_L0_instructions.md)
+- Ingested all docs under `data` plus 430 more docs to represent me
 - Enhanced the document processor to store document insights and summaries in both PostgreSQL and Wasabi
 - Added document title, insight, and summary columns to the PostgreSQL document table
 - Updated document_processor.py to correctly handle document creation and storage
-- Enhanced the L0 pipeline's error handling and logging
 - Successfully tested the full pipeline with various document types
 
 ### Commands Run
@@ -152,6 +152,8 @@ python scripts/test_l0_pipeline.py  # Integration test with real document
 python scripts/test_l0_pipeline.py data/3\ Kingdoms\ Podcast.md  # Test with sample document
 psql -h localhost -U postgres -d second_me -c "DROP TABLE documents;" # When fixing schema issues
 python scripts/test_l0_pipeline.py  # Testing with default document
+
+python scripts/process_all_data.py # Ingest data directory
 ```
 
 ### Next Steps Planned
