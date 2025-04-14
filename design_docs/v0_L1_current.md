@@ -401,6 +401,17 @@ def get_latest_global_bio() -> Optional[GlobalBioDTO]:
         return None
 ```
 
+## How to see the output
+
+- Existing Logs: The code already logs the content of chunk_topics. You should check the application logs when this function runs to see this output.
+- Adding More Logging: To see the other components (bio, clusters, individual shades, merged_shades), you could add more logger.info(...) statements at the points where these variables are generated or just before the final return result statement. For example, you could log result.to_dict() to see the entire structure.
+- API Endpoint: The search results also showed an API endpoint `/api/kernel/l1/global/generate` in `lpm_kernel/api/domains/kernel/routes.py` that calls `generate_l1_from_l0`. Calling this endpoint seems to be the primary way to trigger L1 generation. The endpoint itself serializes and returns the L1GenerationResult in the JSON response.
+
+How to run and verify:
+- Trigger Generation: Make a POST request to the `/api/kernel/l1/global/`generate endpoint. This should execute the generate_l1_from_l0 function.
+- Check API Response: The response body of the API call will contain the generated L1 data (bio, clusters, chunk\topics) in a serialized format. You can examine this JSON to verify the structure and content.
+- Check Logs: Monitor the application's logs (wherever logger.info outputs go). You should see the existing log for chunk_topics and any additional logs you might add.
+
 ## Summary
 
 The L1 data layer processes L0 document data to create higher-level knowledge representations:

@@ -6,7 +6,7 @@ for L1 data including topics, clusters, and shades.
 """
 import logging
 import json
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 
 import weaviate
 from weaviate.util import generate_uuid5
@@ -23,6 +23,10 @@ TOPICS_COLLECTION = "L1Topics"
 CLUSTERS_COLLECTION = "L1Clusters"
 SHADES_COLLECTION = "L1Shades"
 BIOS_COLLECTION = "L1Biographies"
+
+class InvalidModelError(Exception):
+    """Exception raised when a model is invalid."""
+    pass
 
 class WeaviateAdapter:
     """
@@ -59,150 +63,138 @@ class WeaviateAdapter:
         """
         return str(generate_uuid5(f"{entity_type}_{user_id}_{entity_id}"))
     
-    def add_topic(self, user_id: str, topic_id: str, name: str, summary: str, 
-                 embedding: List[float], metadata: Optional[Dict[str, Any]] = None) -> str:
+    def add_topic(self, user_id: str, topic: Topic) -> str:
         """
-        Add a topic to Weaviate.
+        Add a Topic domain model to Weaviate.
         
         Args:
             user_id: User ID.
-            topic_id: Topic ID.
-            name: Topic name.
-            summary: Topic summary.
-            embedding: Vector embedding of the topic.
-            metadata: Optional additional metadata.
+            topic: Topic domain model.
             
         Returns:
             Weaviate UUID of the created object.
         """
-        object_uuid = self._generate_uuid("topic", user_id, topic_id)
+        self._validate_model(topic)
+        
+        object_uuid = self._generate_uuid("topic", user_id, topic.id)
         
         properties = {
             "user_id": user_id,
-            "topic_id": topic_id,
-            "name": name,
-            "summary": summary
+            "topic_id": topic.id,
+            "name": topic.name,
+            "summary": topic.summary or ""
         }
         
-        if metadata:
-            properties["metadata"] = json.dumps(metadata)
+        if topic.metadata:
+            properties["metadata"] = json.dumps(topic.metadata)
         
         try:
             self.client.data_object.create(
                 properties,
                 TOPICS_COLLECTION,
                 object_uuid,
-                vector=embedding
+                vector=topic.embedding or []
             )
             return object_uuid
         except Exception as e:
             logger.error(f"Error adding topic to Weaviate: {e}")
             raise
     
-    def add_cluster(self, user_id: str, cluster_id: str, topic_id: str, name: str, 
-                   summary: str, embedding: List[float], 
-                   metadata: Optional[Dict[str, Any]] = None) -> str:
+    def add_cluster(self, user_id: str, cluster: Cluster) -> str:
         """
-        Add a cluster to Weaviate.
+        Add a Cluster domain model to Weaviate.
         
         Args:
             user_id: User ID.
-            cluster_id: Cluster ID.
-            topic_id: Parent topic ID.
-            name: Cluster name.
-            summary: Cluster summary.
-            embedding: Vector embedding of the cluster.
-            metadata: Optional additional metadata.
+            cluster: Cluster domain model.
             
         Returns:
             Weaviate UUID of the created object.
         """
-        object_uuid = self._generate_uuid("cluster", user_id, cluster_id)
+        self._validate_model(cluster)
+        
+        object_uuid = self._generate_uuid("cluster", user_id, cluster.id)
         
         properties = {
             "user_id": user_id,
-            "cluster_id": cluster_id,
-            "topic_id": topic_id,
-            "name": name,
-            "summary": summary
+            "cluster_id": cluster.id,
+            "topic_id": cluster.topic_id or "",
+            "name": cluster.name or "",
+            "summary": cluster.summary or ""
         }
         
-        if metadata:
-            properties["metadata"] = json.dumps(metadata)
+        if cluster.metadata:
+            properties["metadata"] = json.dumps(cluster.metadata)
         
         try:
             self.client.data_object.create(
                 properties,
                 CLUSTERS_COLLECTION,
                 object_uuid,
-                vector=embedding
+                vector=cluster.center_embedding or []
             )
             return object_uuid
         except Exception as e:
             logger.error(f"Error adding cluster to Weaviate: {e}")
             raise
     
-    def add_shade(self, user_id: str, shade_id: str, name: str, summary: str, 
-                 embedding: List[float], confidence: float,
-                 metadata: Optional[Dict[str, Any]] = None) -> str:
+    def add_shade(self, user_id: str, shade: Shade) -> str:
         """
-        Add a shade to Weaviate.
+        Add a Shade domain model to Weaviate.
         
         Args:
             user_id: User ID.
-            shade_id: Shade ID.
-            name: Shade name.
-            summary: Shade summary.
-            embedding: Vector embedding of the shade.
-            confidence: Confidence score for the shade.
-            metadata: Optional additional metadata.
+            shade: Shade domain model.
             
         Returns:
             Weaviate UUID of the created object.
         """
-        object_uuid = self._generate_uuid("shade", user_id, shade_id)
+        self._validate_model(shade)
+        
+        object_uuid = self._generate_uuid("shade", user_id, shade.id)
         
         properties = {
             "user_id": user_id,
-            "shade_id": shade_id,
-            "name": name,
-            "summary": summary,
-            "confidence": confidence
+            "shade_id": shade.id,
+            "name": shade.name,
+            "summary": shade.summary or "",
+            "confidence": shade.confidence
         }
         
-        if metadata:
-            properties["metadata"] = json.dumps(metadata)
+        if shade.metadata:
+            properties["metadata"] = json.dumps(shade.metadata)
         
         try:
             self.client.data_object.create(
                 properties,
                 SHADES_COLLECTION,
                 object_uuid,
-                vector=embedding
+                vector=shade.embedding or []
             )
             return object_uuid
         except Exception as e:
             logger.error(f"Error adding shade to Weaviate: {e}")
             raise
     
-    def add_biography(self, user_id: str, bio_id: str, content: str, 
-                     embedding: List[float], version: int,
-                     metadata: Optional[Dict[str, Any]] = None) -> str:
+    def add_biography(self, user_id: str, bio_id: str, bio: Bio, version: int) -> str:
         """
-        Add a biography to Weaviate.
+        Add a Bio domain model to Weaviate.
         
         Args:
             user_id: User ID.
             bio_id: Biography ID.
-            content: Biography content.
-            embedding: Vector embedding of the biography.
+            bio: Bio domain model.
             version: Version number.
-            metadata: Optional additional metadata.
             
         Returns:
             Weaviate UUID of the created object.
         """
+        self._validate_model(bio)
+        
         object_uuid = self._generate_uuid("bio", user_id, bio_id)
+        
+        # Prefer third-person view for vector embedding
+        content = bio.content_third_view if hasattr(bio, 'content_third_view') else bio.content
         
         properties = {
             "user_id": user_id,
@@ -211,8 +203,11 @@ class WeaviateAdapter:
             "version": version
         }
         
-        if metadata:
-            properties["metadata"] = json.dumps(metadata)
+        # Ensure we have an embedding
+        embedding = getattr(bio, 'embedding', None) or []
+        
+        if hasattr(bio, 'metadata') and bio.metadata:
+            properties["metadata"] = json.dumps(bio.metadata)
         
         try:
             self.client.data_object.create(
@@ -869,92 +864,196 @@ class WeaviateAdapter:
 
     # Domain model methods
     
-    def add_topic_model(self, user_id: str, topic: Topic) -> str:
+    def _validate_model(self, model: Union[Topic, Cluster, Shade, Bio]) -> bool:
         """
-        Add a Topic domain model to Weaviate.
+        Validate a domain model before storage.
         
         Args:
-            user_id: User ID.
-            topic: Topic domain model.
+            model: Domain model to validate.
             
         Returns:
-            Weaviate UUID of the created object.
+            True if model is valid, raises InvalidModelError otherwise.
         """
-        return self.add_topic(
-            user_id=user_id,
-            topic_id=topic.id,
-            name=topic.name,
-            summary=topic.summary or "",
-            embedding=topic.embedding or [],
-            metadata=topic.metadata
-        )
+        # Basic validation
+        if not hasattr(model, 'id') or not model.id:
+            raise InvalidModelError("Model must have an ID")
+            
+        if not hasattr(model, 'to_dict') or not callable(model.to_dict):
+            raise InvalidModelError("Model must implement to_dict() method")
+            
+        return True
     
-    def add_cluster_model(self, user_id: str, cluster: Cluster) -> str:
+    def search_topics_models(self, user_id: str, query_embedding: List[float], 
+                            limit: int = 10) -> List[Topic]:
         """
-        Add a Cluster domain model to Weaviate.
+        Search for topics by similarity and return domain models.
         
         Args:
             user_id: User ID.
-            cluster: Cluster domain model.
+            query_embedding: Query vector embedding.
+            limit: Maximum number of results.
             
         Returns:
-            Weaviate UUID of the created object.
+            List of matching Topic domain models with similarity score added to metadata.
         """
-        return self.add_cluster(
-            user_id=user_id,
-            cluster_id=cluster.id,
-            topic_id=cluster.topic_id or "",
-            name=cluster.name or "",
-            summary=cluster.summary or "",
-            embedding=cluster.center_embedding or [],
-            metadata=cluster.metadata
-        )
+        topic_dicts = self.search_topics(user_id, query_embedding, limit)
+        topics = []
+        
+        for topic_dict in topic_dicts:
+            # Create Topic domain model
+            topic = Topic(
+                id=topic_dict.get("topic_id"),
+                name=topic_dict.get("name", ""),
+                summary=topic_dict.get("summary", ""),
+                embedding=topic_dict.get("embedding", [])
+            )
+            
+            # Add metadata if available
+            if "metadata" in topic_dict:
+                topic.metadata = topic_dict["metadata"]
+                
+            # Add certainty score to metadata
+            if "certainty" in topic_dict:
+                if not topic.metadata:
+                    topic.metadata = {}
+                topic.metadata["certainty"] = topic_dict["certainty"]
+                
+            topics.append(topic)
+            
+        return topics
     
-    def add_shade_model(self, user_id: str, shade: Shade) -> str:
+    def search_clusters_models(self, user_id: str, query_embedding: List[float], 
+                              topic_id: Optional[str] = None, 
+                              limit: int = 10) -> List[Cluster]:
         """
-        Add a Shade domain model to Weaviate.
+        Search for clusters by similarity and return domain models.
         
         Args:
             user_id: User ID.
-            shade: Shade domain model.
+            query_embedding: Query vector embedding.
+            topic_id: Optional topic ID to filter clusters.
+            limit: Maximum number of results.
             
         Returns:
-            Weaviate UUID of the created object.
+            List of matching Cluster domain models with similarity score added to metadata.
         """
-        return self.add_shade(
-            user_id=user_id,
-            shade_id=shade.id,
-            name=shade.name,
-            summary=shade.summary or "",
-            embedding=shade.embedding or [],
-            confidence=shade.confidence,
-            metadata=shade.metadata
-        )
+        cluster_dicts = self.search_clusters(user_id, query_embedding, topic_id, limit)
+        clusters = []
+        
+        for cluster_dict in cluster_dicts:
+            # Create Cluster domain model
+            cluster = Cluster(
+                id=cluster_dict.get("cluster_id"),
+                topic_id=cluster_dict.get("topic_id"),
+                name=cluster_dict.get("name", ""),
+                summary=cluster_dict.get("summary", ""),
+                center_embedding=cluster_dict.get("embedding", [])
+            )
+            
+            # Add metadata if available
+            if "metadata" in cluster_dict:
+                cluster.metadata = cluster_dict["metadata"]
+                
+            # Add certainty score to metadata
+            if "certainty" in cluster_dict:
+                if not cluster.metadata:
+                    cluster.metadata = {}
+                cluster.metadata["certainty"] = cluster_dict["certainty"]
+                
+            clusters.append(cluster)
+            
+        return clusters
     
-    def add_biography_model(self, user_id: str, bio_id: str, bio: Bio, version: int) -> str:
+    def search_shades_models(self, user_id: str, query_embedding: List[float], 
+                            min_confidence: float = 0.0,
+                            limit: int = 10) -> List[Shade]:
         """
-        Add a Bio domain model to Weaviate.
+        Search for shades by similarity and return domain models.
         
         Args:
             user_id: User ID.
-            bio_id: Biography ID.
-            bio: Bio domain model.
-            version: Version number.
+            query_embedding: Query vector embedding.
+            min_confidence: Minimum confidence score to include in results.
+            limit: Maximum number of results.
             
         Returns:
-            Weaviate UUID of the created object.
+            List of matching Shade domain models with similarity score added to metadata.
         """
-        # Prefer third-person view for vector embedding
-        content = bio.content_third_view if hasattr(bio, 'content_third_view') else bio.content
+        shade_dicts = self.search_shades(user_id, query_embedding, min_confidence, limit)
+        shades = []
         
-        # Ensure we have an embedding
-        embedding = getattr(bio, 'embedding', None) or []
+        for shade_dict in shade_dicts:
+            # Create Shade domain model
+            shade = Shade(
+                id=shade_dict.get("shade_id"),
+                name=shade_dict.get("name", ""),
+                summary=shade_dict.get("summary", ""),
+                confidence=shade_dict.get("confidence", 0.0),
+                embedding=shade_dict.get("embedding", [])
+            )
+            
+            # Add metadata if available
+            if "metadata" in shade_dict:
+                shade.metadata = shade_dict["metadata"]
+                
+            # Add certainty score to metadata
+            if "certainty" in shade_dict:
+                if not shade.metadata:
+                    shade.metadata = {}
+                shade.metadata["certainty"] = shade_dict["certainty"]
+                
+            shades.append(shade)
+            
+        return shades
+    
+    def get_similar_shades_models(self, user_id: str, shade_id: str, 
+                                 limit: int = 5) -> List[Shade]:
+        """
+        Get similar shades to a given shade and return domain models.
         
-        return self.add_biography(
-            user_id=user_id,
-            bio_id=bio_id,
-            content=content,
-            embedding=embedding,
-            version=version,
-            metadata=getattr(bio, 'metadata', {})
-        ) 
+        Args:
+            user_id: User ID.
+            shade_id: Shade ID to find similar shades for.
+            limit: Maximum number of results.
+            
+        Returns:
+            List of similar Shade domain models with similarity score added to metadata.
+        """
+        similar_dicts = self.get_similar_shades(user_id, shade_id, limit)
+        return self._convert_shade_dicts_to_models(similar_dicts)
+    
+    def _convert_shade_dicts_to_models(self, shade_dicts: List[Dict[str, Any]]) -> List[Shade]:
+        """
+        Convert a list of shade dictionaries to domain models.
+        
+        Args:
+            shade_dicts: List of shade dictionaries.
+            
+        Returns:
+            List of Shade domain models.
+        """
+        shades = []
+        
+        for shade_dict in shade_dicts:
+            # Create Shade domain model
+            shade = Shade(
+                id=shade_dict.get("shade_id"),
+                name=shade_dict.get("name", ""),
+                summary=shade_dict.get("summary", ""),
+                confidence=shade_dict.get("confidence", 0.0),
+                embedding=shade_dict.get("embedding", [])
+            )
+            
+            # Add metadata if available
+            if "metadata" in shade_dict:
+                shade.metadata = shade_dict["metadata"]
+                
+            # Add similarity score to metadata
+            if "similarity" in shade_dict:
+                if not shade.metadata:
+                    shade.metadata = {}
+                shade.metadata["similarity"] = shade_dict["similarity"]
+                
+            shades.append(shade)
+            
+        return shades 

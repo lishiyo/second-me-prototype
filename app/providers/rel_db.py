@@ -6,10 +6,10 @@ import uuid
 
 from sqlalchemy import create_engine, MetaData, Table, Column, String, DateTime
 from sqlalchemy import Integer, Boolean, Text, ForeignKey, text
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import declarative_base
 
 logger = logging.getLogger(__name__)
 

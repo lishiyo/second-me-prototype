@@ -2,7 +2,7 @@
 WasabiStorageAdapter for L1 layer.
 
 This module provides an adapter for interacting with Wasabi (S3-compatible)
-storage for storing large blobs of L1 data.
+storage for storing and retrieving L1 domain models.
 """
 import logging
 import json
@@ -26,12 +26,16 @@ SHADES_PREFIX = "l1/shades/"
 BIOS_PREFIX = "l1/bios/"
 VERSIONS_PREFIX = "l1/versions/"
 
+class InvalidModelError(Exception):
+    """Raised when a domain model fails validation."""
+    pass
+
 class WasabiStorageAdapter:
     """
     Adapter for Wasabi S3-compatible storage operations for L1 data.
     
-    Provides methods for storing and retrieving large blob data for L1
-    including detailed topic data, cluster data, shades, and biographies.
+    Provides methods for storing and retrieving L1 domain models including
+    topics, clusters, shades, and biographies.
     """
     
     def __init__(
@@ -83,280 +87,247 @@ class WasabiStorageAdapter:
         """
         return f"{prefix}{user_id}/{object_id}.json"
     
-    def store_topic_data(self, user_id: str, topic_id: str, data: Dict[str, Any]) -> str:
+    def _validate_model(self, model: Union[Topic, Cluster, Shade, Bio]) -> bool:
         """
-        Store detailed topic data in Wasabi.
+        Validate a domain model before storage.
+        
+        Args:
+            model: Domain model to validate.
+            
+        Returns:
+            True if model is valid, raises InvalidModelError otherwise.
+        """
+        # Basic validation
+        if not hasattr(model, 'id') or not model.id:
+            raise InvalidModelError("Model must have an ID")
+            
+        if not hasattr(model, 'to_dict') or not callable(model.to_dict):
+            raise InvalidModelError("Model must implement to_dict() method")
+            
+        return True
+    
+    def store_json(self, object_key: str, data: Dict[str, Any]) -> None:
+        """
+        Store JSON data in Wasabi.
+        
+        Args:
+            object_key: S3 object key.
+            data: JSON-serializable data to store.
+        """
+        try:
+            data_json = json.dumps(data)
+            self.client.put_object(
+                Bucket=self.bucket_name,
+                Key=object_key,
+                Body=data_json,
+                ContentType="application/json"
+            )
+        except ClientError as e:
+            logger.error(f"Error storing JSON data in Wasabi: {e}")
+            raise
+    
+    def get_json(self, object_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve JSON data from Wasabi.
+        
+        Args:
+            object_key: S3 object key.
+            
+        Returns:
+            JSON data or None if not found.
+        """
+        try:
+            response = self.client.get_object(
+                Bucket=self.bucket_name,
+                Key=object_key
+            )
+            data_json = response["Body"].read().decode("utf-8")
+            return json.loads(data_json)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "NoSuchKey":
+                logger.warning(f"JSON data not found: {object_key}")
+                return None
+            else:
+                logger.error(f"Error retrieving JSON data from Wasabi: {e}")
+                raise
+    
+    # Domain model methods
+    
+    def store_topic(self, user_id: str, topic: Topic) -> str:
+        """
+        Store a Topic domain model in Wasabi.
+        
+        Args:
+            user_id: User ID.
+            topic: Topic domain model.
+            
+        Returns:
+            S3 path where the topic was stored.
+        """
+        self._validate_model(topic)
+        
+        s3_path = self._get_object_key(TOPICS_PREFIX, user_id, topic.id)
+        self.store_json(s3_path, topic.to_dict())
+        return s3_path
+    
+    def get_topic(self, user_id: str, topic_id: str) -> Optional[Topic]:
+        """
+        Retrieve a Topic domain model from Wasabi.
         
         Args:
             user_id: User ID.
             topic_id: Topic ID.
-            data: Topic data to store.
             
         Returns:
-            S3 object key.
+            Topic domain model or None if not found.
         """
-        object_key = self._get_object_key(TOPICS_PREFIX, user_id, topic_id)
-        
-        try:
-            data_json = json.dumps(data)
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=object_key,
-                Body=data_json,
-                ContentType="application/json"
-            )
-            return object_key
-        except ClientError as e:
-            logger.error(f"Error storing topic data in Wasabi: {e}")
-            raise
+        s3_path = self._get_object_key(TOPICS_PREFIX, user_id, topic_id)
+        data = self.get_json(s3_path)
+        if data:
+            return Topic.from_dict(data)
+        return None
     
-    def get_topic_data(self, user_id: str, topic_id: str) -> Optional[Dict[str, Any]]:
+    def store_cluster(self, user_id: str, cluster: Cluster) -> str:
         """
-        Retrieve detailed topic data from Wasabi.
+        Store a Cluster domain model in Wasabi.
         
         Args:
             user_id: User ID.
-            topic_id: Topic ID.
+            cluster: Cluster domain model.
             
         Returns:
-            Topic data or None if not found.
+            S3 path where the cluster was stored.
         """
-        object_key = self._get_object_key(TOPICS_PREFIX, user_id, topic_id)
+        self._validate_model(cluster)
         
-        try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
-            data_json = response["Body"].read().decode("utf-8")
-            return json.loads(data_json)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                logger.warning(f"Topic data not found: {object_key}")
-                return None
-            else:
-                logger.error(f"Error retrieving topic data from Wasabi: {e}")
-                raise
+        s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster.id)
+        self.store_json(s3_path, cluster.to_dict())
+        return s3_path
     
-    def store_cluster_data(self, user_id: str, cluster_id: str, data: Dict[str, Any]) -> str:
+    def get_cluster(self, user_id: str, cluster_id: str) -> Optional[Cluster]:
         """
-        Store detailed cluster data in Wasabi.
-        
-        Args:
-            user_id: User ID.
-            cluster_id: Cluster ID.
-            data: Cluster data to store.
-            
-        Returns:
-            S3 object key.
-        """
-        object_key = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster_id)
-        
-        try:
-            data_json = json.dumps(data)
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=object_key,
-                Body=data_json,
-                ContentType="application/json"
-            )
-            return object_key
-        except ClientError as e:
-            logger.error(f"Error storing cluster data in Wasabi: {e}")
-            raise
-    
-    def get_cluster_data(self, user_id: str, cluster_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve detailed cluster data from Wasabi.
+        Retrieve a Cluster domain model from Wasabi.
         
         Args:
             user_id: User ID.
             cluster_id: Cluster ID.
             
         Returns:
-            Cluster data or None if not found.
+            Cluster domain model or None if not found.
         """
-        object_key = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster_id)
-        
-        try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
-            data_json = response["Body"].read().decode("utf-8")
-            return json.loads(data_json)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                logger.warning(f"Cluster data not found: {object_key}")
-                return None
-            else:
-                logger.error(f"Error retrieving cluster data from Wasabi: {e}")
-                raise
+        s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster_id)
+        data = self.get_json(s3_path)
+        if data:
+            return Cluster.from_dict(data)
+        return None
     
-    def store_shade_data(self, user_id: str, shade_id: str, data: Dict[str, Any]) -> str:
+    def store_shade(self, user_id: str, shade: Shade) -> str:
         """
-        Store detailed shade data in Wasabi.
+        Store a Shade domain model in Wasabi.
         
         Args:
             user_id: User ID.
-            shade_id: Shade ID.
-            data: Shade data to store.
+            shade: Shade domain model.
             
         Returns:
-            S3 object key.
+            S3 path where the shade was stored.
         """
-        object_key = self._get_object_key(SHADES_PREFIX, user_id, shade_id)
+        self._validate_model(shade)
         
-        try:
-            data_json = json.dumps(data)
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=object_key,
-                Body=data_json,
-                ContentType="application/json"
-            )
-            return object_key
-        except ClientError as e:
-            logger.error(f"Error storing shade data in Wasabi: {e}")
-            raise
+        s3_path = self._get_object_key(SHADES_PREFIX, user_id, shade.id)
+        self.store_json(s3_path, shade.to_dict())
+        return s3_path
     
-    def get_shade_data(self, user_id: str, shade_id: str) -> Optional[Dict[str, Any]]:
+    def get_shade(self, user_id: str, shade_id: str) -> Optional[Shade]:
         """
-        Retrieve detailed shade data from Wasabi.
+        Retrieve a Shade domain model from Wasabi.
         
         Args:
             user_id: User ID.
             shade_id: Shade ID.
             
         Returns:
-            Shade data or None if not found.
+            Shade domain model or None if not found.
         """
-        object_key = self._get_object_key(SHADES_PREFIX, user_id, shade_id)
-        
-        try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
-            data_json = response["Body"].read().decode("utf-8")
-            return json.loads(data_json)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                logger.warning(f"Shade data not found: {object_key}")
-                return None
-            else:
-                logger.error(f"Error retrieving shade data from Wasabi: {e}")
-                raise
+        s3_path = self._get_object_key(SHADES_PREFIX, user_id, shade_id)
+        data = self.get_json(s3_path)
+        if data:
+            return Shade.from_dict(data)
+        return None
     
-    def store_biography_data(self, user_id: str, bio_id: str, data: Dict[str, Any]) -> str:
+    def store_global_bio(self, user_id: str, version: int, bio: Bio) -> str:
         """
-        Store detailed biography data in Wasabi.
+        Store a Bio domain model as a global biography in Wasabi.
         
         Args:
             user_id: User ID.
-            bio_id: Biography ID.
-            data: Biography data to store.
+            version: Biography version.
+            bio: Bio domain model.
             
         Returns:
-            S3 object key.
+            S3 path where the biography was stored.
         """
-        object_key = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
+        self._validate_model(bio)
         
-        try:
-            data_json = json.dumps(data)
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=object_key,
-                Body=data_json,
-                ContentType="application/json"
-            )
-            return object_key
-        except ClientError as e:
-            logger.error(f"Error storing biography data in Wasabi: {e}")
-            raise
+        bio_id = f"global_v{version}"
+        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
+        self.store_json(s3_path, bio.to_dict())
+        return s3_path
     
-    def get_biography_data(self, user_id: str, bio_id: str) -> Optional[Dict[str, Any]]:
+    def get_global_bio(self, user_id: str, version: int) -> Optional[Bio]:
         """
-        Retrieve detailed biography data from Wasabi.
+        Retrieve a global biography Bio domain model from Wasabi.
         
         Args:
             user_id: User ID.
-            bio_id: Biography ID.
+            version: Biography version.
             
         Returns:
-            Biography data or None if not found.
+            Bio domain model or None if not found.
         """
-        object_key = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
-        
-        try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
-            data_json = response["Body"].read().decode("utf-8")
-            return json.loads(data_json)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                logger.warning(f"Biography data not found: {object_key}")
-                return None
-            else:
-                logger.error(f"Error retrieving biography data from Wasabi: {e}")
-                raise
+        bio_id = f"global_v{version}"
+        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
+        data = self.get_json(s3_path)
+        if data:
+            return Bio.from_dict(data)
+        return None
     
-    def store_version_data(self, user_id: str, version_id: str, data: Dict[str, Any]) -> str:
+    def store_status_bio(self, user_id: str, timestamp: str, bio: Bio) -> str:
         """
-        Store version metadata in Wasabi.
+        Store a Bio domain model as a status biography in Wasabi.
         
         Args:
             user_id: User ID.
-            version_id: Version ID.
-            data: Version metadata to store.
+            timestamp: Timestamp string.
+            bio: Bio domain model.
             
         Returns:
-            S3 object key.
+            S3 path where the biography was stored.
         """
-        object_key = self._get_object_key(VERSIONS_PREFIX, user_id, version_id)
+        self._validate_model(bio)
         
-        try:
-            data_json = json.dumps(data)
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=object_key,
-                Body=data_json,
-                ContentType="application/json"
-            )
-            return object_key
-        except ClientError as e:
-            logger.error(f"Error storing version data in Wasabi: {e}")
-            raise
+        bio_id = f"status_{timestamp}"
+        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
+        self.store_json(s3_path, bio.to_dict())
+        return s3_path
     
-    def get_version_data(self, user_id: str, version_id: str) -> Optional[Dict[str, Any]]:
+    def get_status_bio(self, user_id: str, timestamp: str) -> Optional[Bio]:
         """
-        Retrieve version metadata from Wasabi.
+        Retrieve a status biography Bio domain model from Wasabi.
         
         Args:
             user_id: User ID.
-            version_id: Version ID.
+            timestamp: Timestamp string.
             
         Returns:
-            Version metadata or None if not found.
+            Bio domain model or None if not found.
         """
-        object_key = self._get_object_key(VERSIONS_PREFIX, user_id, version_id)
-        
-        try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=object_key
-            )
-            data_json = response["Body"].read().decode("utf-8")
-            return json.loads(data_json)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                logger.warning(f"Version data not found: {object_key}")
-                return None
-            else:
-                logger.error(f"Error retrieving version data from Wasabi: {e}")
-                raise
+        bio_id = f"status_{timestamp}"
+        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
+        data = self.get_json(s3_path)
+        if data:
+            return Bio.from_dict(data)
+        return None
     
     def list_user_topics(self, user_id: str) -> List[str]:
         """
@@ -482,40 +453,9 @@ class WasabiStorageAdapter:
             logger.error(f"Error listing biographies in Wasabi: {e}")
             return []
     
-    def list_user_versions(self, user_id: str) -> List[str]:
+    def delete_topic(self, user_id: str, topic_id: str) -> bool:
         """
-        List all version IDs for a user.
-        
-        Args:
-            user_id: User ID.
-            
-        Returns:
-            List of version IDs.
-        """
-        prefix = f"{VERSIONS_PREFIX}{user_id}/"
-        
-        try:
-            response = self.client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=prefix
-            )
-            
-            version_ids = []
-            if "Contents" in response:
-                for item in response["Contents"]:
-                    key = item["Key"]
-                    # Extract the ID from the key (remove prefix and .json suffix)
-                    version_id = key[len(prefix):-5]  # -5 to remove ".json"
-                    version_ids.append(version_id)
-            
-            return version_ids
-        except ClientError as e:
-            logger.error(f"Error listing versions in Wasabi: {e}")
-            return []
-    
-    def delete_topic_data(self, user_id: str, topic_id: str) -> bool:
-        """
-        Delete topic data from Wasabi.
+        Delete a topic from Wasabi.
         
         Args:
             user_id: User ID.
@@ -533,12 +473,12 @@ class WasabiStorageAdapter:
             )
             return True
         except ClientError as e:
-            logger.error(f"Error deleting topic data from Wasabi: {e}")
+            logger.error(f"Error deleting topic from Wasabi: {e}")
             return False
     
-    def delete_cluster_data(self, user_id: str, cluster_id: str) -> bool:
+    def delete_cluster(self, user_id: str, cluster_id: str) -> bool:
         """
-        Delete cluster data from Wasabi.
+        Delete a cluster from Wasabi.
         
         Args:
             user_id: User ID.
@@ -556,12 +496,12 @@ class WasabiStorageAdapter:
             )
             return True
         except ClientError as e:
-            logger.error(f"Error deleting cluster data from Wasabi: {e}")
+            logger.error(f"Error deleting cluster from Wasabi: {e}")
             return False
     
-    def delete_shade_data(self, user_id: str, shade_id: str) -> bool:
+    def delete_shade(self, user_id: str, shade_id: str) -> bool:
         """
-        Delete shade data from Wasabi.
+        Delete a shade from Wasabi.
         
         Args:
             user_id: User ID.
@@ -579,12 +519,12 @@ class WasabiStorageAdapter:
             )
             return True
         except ClientError as e:
-            logger.error(f"Error deleting shade data from Wasabi: {e}")
+            logger.error(f"Error deleting shade from Wasabi: {e}")
             return False
     
-    def delete_biography_data(self, user_id: str, bio_id: str) -> bool:
+    def delete_biography(self, user_id: str, bio_id: str) -> bool:
         """
-        Delete biography data from Wasabi.
+        Delete a biography from Wasabi.
         
         Args:
             user_id: User ID.
@@ -602,7 +542,7 @@ class WasabiStorageAdapter:
             )
             return True
         except ClientError as e:
-            logger.error(f"Error deleting biography data from Wasabi: {e}")
+            logger.error(f"Error deleting biography from Wasabi: {e}")
             return False
     
     def delete_user_data(self, user_id: str) -> bool:
@@ -621,8 +561,7 @@ class WasabiStorageAdapter:
                 f"{TOPICS_PREFIX}{user_id}/",
                 f"{CLUSTERS_PREFIX}{user_id}/",
                 f"{SHADES_PREFIX}{user_id}/",
-                f"{BIOS_PREFIX}{user_id}/",
-                f"{VERSIONS_PREFIX}{user_id}/"
+                f"{BIOS_PREFIX}{user_id}/"
             ]
             
             for prefix in prefixes:
@@ -672,8 +611,7 @@ class WasabiStorageAdapter:
                 f"{TOPICS_PREFIX}{user_id}/",
                 f"{CLUSTERS_PREFIX}{user_id}/",
                 f"{SHADES_PREFIX}{user_id}/",
-                f"{BIOS_PREFIX}{user_id}/",
-                f"{VERSIONS_PREFIX}{user_id}/"
+                f"{BIOS_PREFIX}{user_id}/"
             ]
             
             for prefix in prefixes:
@@ -699,8 +637,6 @@ class WasabiStorageAdapter:
                             backup_key = source_key.replace(SHADES_PREFIX, f"{backup_prefix}{SHADES_PREFIX}")
                         elif source_key.startswith(BIOS_PREFIX):
                             backup_key = source_key.replace(BIOS_PREFIX, f"{backup_prefix}{BIOS_PREFIX}")
-                        elif source_key.startswith(VERSIONS_PREFIX):
-                            backup_key = source_key.replace(VERSIONS_PREFIX, f"{backup_prefix}{VERSIONS_PREFIX}")
                         else:
                             continue
                         
@@ -729,222 +665,4 @@ class WasabiStorageAdapter:
             return backup_id
         except ClientError as e:
             logger.error(f"Error creating backup in Wasabi: {e}")
-            raise
-    
-    def store_json(self, user_id: str, s3_path: str, data: Dict[str, Any]) -> None:
-        """
-        Store JSON data in Wasabi.
-        
-        Args:
-            user_id: User ID.
-            s3_path: S3 path to store the data.
-            data: JSON-serializable data to store.
-        """
-        try:
-            data_json = json.dumps(data)
-            self.client.put_object(
-                Bucket=self.bucket_name,
-                Key=s3_path,
-                Body=data_json,
-                ContentType="application/json"
-            )
-        except ClientError as e:
-            logger.error(f"Error storing JSON data in Wasabi: {e}")
-            raise
-    
-    def get_json(self, user_id: str, s3_path: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve JSON data from Wasabi.
-        
-        Args:
-            user_id: User ID.
-            s3_path: S3 path to retrieve the data from.
-            
-        Returns:
-            JSON data or None if not found.
-        """
-        try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=s3_path
-            )
-            data_json = response["Body"].read().decode("utf-8")
-            return json.loads(data_json)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchKey":
-                logger.warning(f"JSON data not found: {s3_path}")
-                return None
-            else:
-                logger.error(f"Error retrieving JSON data from Wasabi: {e}")
-                raise
-    
-    # Domain model methods
-    
-    def store_topic(self, user_id: str, topic_id: str, topic_data: Topic) -> str:
-        """
-        Store a Topic domain model in Wasabi.
-        
-        Args:
-            user_id: User ID.
-            topic_id: Topic ID.
-            topic_data: Topic domain model.
-            
-        Returns:
-            S3 path where the topic was stored.
-        """
-        s3_path = self._get_object_key(TOPICS_PREFIX, user_id, topic_id)
-        self.store_json(user_id, s3_path, topic_data.to_dict())
-        return s3_path
-    
-    def get_topic(self, user_id: str, topic_id: str) -> Optional[Topic]:
-        """
-        Retrieve a Topic domain model from Wasabi.
-        
-        Args:
-            user_id: User ID.
-            topic_id: Topic ID.
-            
-        Returns:
-            Topic domain model or None if not found.
-        """
-        s3_path = self._get_object_key(TOPICS_PREFIX, user_id, topic_id)
-        data = self.get_json(user_id, s3_path)
-        if data:
-            return Topic.from_dict(data)
-        return None
-    
-    def store_cluster(self, user_id: str, cluster_id: str, cluster_data: Cluster) -> str:
-        """
-        Store a Cluster domain model in Wasabi.
-        
-        Args:
-            user_id: User ID.
-            cluster_id: Cluster ID.
-            cluster_data: Cluster domain model.
-            
-        Returns:
-            S3 path where the cluster was stored.
-        """
-        s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster_id)
-        self.store_json(user_id, s3_path, cluster_data.to_dict())
-        return s3_path
-    
-    def get_cluster(self, user_id: str, cluster_id: str) -> Optional[Cluster]:
-        """
-        Retrieve a Cluster domain model from Wasabi.
-        
-        Args:
-            user_id: User ID.
-            cluster_id: Cluster ID.
-            
-        Returns:
-            Cluster domain model or None if not found.
-        """
-        s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster_id)
-        data = self.get_json(user_id, s3_path)
-        if data:
-            return Cluster.from_dict(data)
-        return None
-    
-    def store_shade(self, user_id: str, shade_id: str, shade_data: Shade) -> str:
-        """
-        Store a Shade domain model in Wasabi.
-        
-        Args:
-            user_id: User ID.
-            shade_id: Shade ID.
-            shade_data: Shade domain model.
-            
-        Returns:
-            S3 path where the shade was stored.
-        """
-        s3_path = self._get_object_key(SHADES_PREFIX, user_id, shade_id)
-        self.store_json(user_id, s3_path, shade_data.to_dict())
-        return s3_path
-    
-    def get_shade(self, user_id: str, shade_id: str) -> Optional[Shade]:
-        """
-        Retrieve a Shade domain model from Wasabi.
-        
-        Args:
-            user_id: User ID.
-            shade_id: Shade ID.
-            
-        Returns:
-            Shade domain model or None if not found.
-        """
-        s3_path = self._get_object_key(SHADES_PREFIX, user_id, shade_id)
-        data = self.get_json(user_id, s3_path)
-        if data:
-            return Shade.from_dict(data)
-        return None
-    
-    def store_global_bio(self, user_id: str, version: int, bio_data: Bio) -> str:
-        """
-        Store a Bio domain model as a global biography in Wasabi.
-        
-        Args:
-            user_id: User ID.
-            version: Biography version.
-            bio_data: Bio domain model.
-            
-        Returns:
-            S3 path where the biography was stored.
-        """
-        bio_id = f"global_v{version}"
-        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
-        self.store_json(user_id, s3_path, bio_data.to_dict())
-        return s3_path
-    
-    def get_global_bio(self, user_id: str, version: int) -> Optional[Bio]:
-        """
-        Retrieve a global biography Bio domain model from Wasabi.
-        
-        Args:
-            user_id: User ID.
-            version: Biography version.
-            
-        Returns:
-            Bio domain model or None if not found.
-        """
-        bio_id = f"global_v{version}"
-        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
-        data = self.get_json(user_id, s3_path)
-        if data:
-            return Bio.from_dict(data)
-        return None
-    
-    def store_status_bio(self, user_id: str, timestamp: str, bio_data: Bio) -> str:
-        """
-        Store a Bio domain model as a status biography in Wasabi.
-        
-        Args:
-            user_id: User ID.
-            timestamp: Timestamp string.
-            bio_data: Bio domain model.
-            
-        Returns:
-            S3 path where the biography was stored.
-        """
-        bio_id = f"status_{timestamp}"
-        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
-        self.store_json(user_id, s3_path, bio_data.to_dict())
-        return s3_path
-    
-    def get_status_bio(self, user_id: str, timestamp: str) -> Optional[Bio]:
-        """
-        Retrieve a status biography Bio domain model from Wasabi.
-        
-        Args:
-            user_id: User ID.
-            timestamp: Timestamp string.
-            
-        Returns:
-            Bio domain model or None if not found.
-        """
-        bio_id = f"status_{timestamp}"
-        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
-        data = self.get_json(user_id, s3_path)
-        if data:
-            return Bio.from_dict(data)
-        return None 
+            raise 

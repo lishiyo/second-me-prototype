@@ -375,6 +375,9 @@ The L1 layer processes data from the L0 layer to create higher-level knowledge r
 - Background worker integration verified
 - API endpoints tested and documented
 
+In particular, we need an api endpoint that makes the same request as lpm_kernel's `POST /api/kernel/l1/global`. This should execute the `generate_l1_from_l0` functionality and return the generated L1 data (bio, clusters, chunk\topics) in a serialized format. We will examine this JSON to verify the structure and content.
+
+
 ## Phase 5: Testing and Optimization Phase
 
 ### Subtask 5.1: Implement Unit Tests
