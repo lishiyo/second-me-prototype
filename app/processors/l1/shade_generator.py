@@ -8,6 +8,7 @@ narratives.
 import logging
 import json
 import uuid
+import numpy as np
 from typing import List, Dict, Any, Optional, Tuple, Union
 from datetime import datetime
 
@@ -127,6 +128,21 @@ class ShadeGenerator:
                 logger.warning("No notes provided for shade generation")
                 return None
             
+            # Extract cluster embedding data from memory_list if available
+            cluster_embedding = None
+            cluster_size = len(cluster_notes)
+            
+            if memory_list and isinstance(memory_list, list):
+                for memory in memory_list:
+                    if memory.get("cluster_info") and memory.get("notes"):
+                        note_ids = [note.id for note in cluster_notes]
+                        memory_note_ids = [n.get("id") for n in memory.get("notes", [])]
+                        
+                        # Check if this memory's notes match our cluster notes
+                        if set(note_ids).issubset(set(memory_note_ids)):
+                            cluster_embedding = memory.get("cluster_info", {}).get("centerEmbedding")
+                            break
+            
             # Format documents for prompt
             documents_text = self._format_notes_for_prompt(cluster_notes)
             
@@ -146,6 +162,10 @@ class ShadeGenerator:
             if not shade_data or "name" not in shade_data:
                 logger.error(f"Failed to parse shade response: {content}")
                 return None
+                
+            # Add cluster embedding to shade data if available
+            if cluster_embedding:
+                shade_data["center_embedding"] = cluster_embedding
             
             # Store shade data in Wasabi
             s3_path = self._store_shade_data(user_id, shade_data, cluster_notes)
@@ -157,6 +177,10 @@ class ShadeGenerator:
                 "name": shade_data.get("name", "Unknown Shade"),
                 "summary": shade_data.get("summary", ""),
                 "confidence": shade_data.get("confidence", 0.0),
+                "metadata": {
+                    "center_embedding": cluster_embedding,
+                    "cluster_size": cluster_size
+                }
             }
             
             # Only add s3_path if the class accepts it (inspect the class's __init__ parameters)
@@ -226,8 +250,22 @@ class ShadeGenerator:
             includes_s3_path = 's3_path' in inspect.signature(L1Shade.__init__).parameters
             
             for shade_data in merged_shades_data:
+                # Get the subset of shades that should be merged into this new shade
+                # In this simplified implementation, we merge all shades into each result
+                # In a production environment, we would need a way to determine which 
+                # original shades belong to which merged shade
+                subset_shades = shades
+                
+                # Calculate center embedding for the merged shade if embeddings are available
+                center_embedding = self._calculate_merged_center_embedding(subset_shades)
+                
+                # Store the embedding in the shade metadata if available
+                if center_embedding is not None:
+                    shade_data["center_embedding"] = center_embedding
+                
                 s3_path = self._store_merged_shade_data(user_id, shade_data)
                 
+                # Create the merged shade dictionary
                 shade_dict = {
                     "id": str(uuid.uuid4()),
                     "user_id": user_id,
@@ -235,7 +273,11 @@ class ShadeGenerator:
                     "summary": shade_data.get("summary", ""),
                     "confidence": shade_data.get("confidence", 0.0),
                     "created_at": datetime.now().isoformat(),
-                    "updated_at": datetime.now().isoformat()
+                    "updated_at": datetime.now().isoformat(),
+                    "metadata": {
+                        "source_shades": [s.id for s in subset_shades],
+                        "center_embedding": center_embedding
+                    }
                 }
                 
                 # Only add s3_path if it's used in the model
@@ -390,7 +432,12 @@ class ShadeGenerator:
         """
         # Prepare complete shade data including notes
         complete_data = {
-            "shade": shade_data,
+            "shade": {
+                "name": shade_data.get("name", "Unknown Shade"),
+                "summary": shade_data.get("summary", ""),
+                "confidence": shade_data.get("confidence", 0.0),
+                "center_embedding": shade_data.get("center_embedding")
+            },
             "notes": [note.to_dict() for note in notes],
             "created_at": datetime.now().isoformat()
         }
@@ -417,7 +464,12 @@ class ShadeGenerator:
         """
         # Prepare complete shade data
         complete_data = {
-            "shade": shade_data,
+            "shade": {
+                "name": shade_data.get("name", "Unknown Shade"),
+                "summary": shade_data.get("summary", ""),
+                "confidence": shade_data.get("confidence", 0.0),
+                "center_embedding": shade_data.get("center_embedding")
+            },
             "created_at": datetime.now().isoformat()
         }
         
@@ -428,4 +480,66 @@ class ShadeGenerator:
         # Store in Wasabi
         self.wasabi_adapter.store_json(s3_path, complete_data)
         
-        return s3_path 
+        return s3_path
+    
+    def _calculate_merged_center_embedding(self, shades: List[L1Shade]) -> Optional[List[float]]:
+        """
+        Calculate the center embedding for merged shades.
+        
+        This method calculates a weighted average of center embeddings from 
+        the input shades based on cluster size.
+        
+        Args:
+            shades: List of shades to merge
+            
+        Returns:
+            List of floats representing the center embedding or None if embeddings unavailable
+        """
+        try:
+            # Check if embeddings exist in shade metadata
+            embeddings_exist = all('center_embedding' in (shade.metadata if hasattr(shade, 'metadata') else {}) 
+                                for shade in shades)
+            
+            if not embeddings_exist:
+                logger.warning("Embeddings not found in one or more shades")
+                return None
+                
+            # Get the first shade's embedding to determine vector dimensions
+            first_embedding = shades[0].metadata.get('center_embedding')
+            if not first_embedding or not isinstance(first_embedding, list):
+                logger.warning(f"Invalid embedding format: {first_embedding}")
+                return None
+                
+            # Initialize total embedding and cluster size
+            total_embedding = np.zeros(len(first_embedding))
+            total_cluster_size = 0
+            
+            # Sum weighted embeddings
+            for shade in shades:
+                # Get cluster size (default to 1 if not specified)
+                cluster_size = shade.metadata.get('cluster_size', 1)
+                
+                # Get center embedding
+                center_embedding = shade.metadata.get('center_embedding')
+                if not center_embedding or not isinstance(center_embedding, list):
+                    continue
+                    
+                # Add weighted embedding to total
+                try:
+                    embedding_array = np.array(center_embedding)
+                    total_embedding += cluster_size * embedding_array
+                    total_cluster_size += cluster_size
+                except Exception as e:
+                    logger.error(f"Error processing embedding: {str(e)}")
+                    continue
+            
+            # Return the average embedding
+            if total_cluster_size > 0:
+                return (total_embedding / total_cluster_size).tolist()
+            else:
+                logger.warning("Total cluster size is zero")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error calculating merged center embedding: {str(e)}", exc_info=True)
+            return None 

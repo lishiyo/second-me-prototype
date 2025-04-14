@@ -169,7 +169,15 @@ def test_store_shade_data(shade_generator, sample_notes, mock_wasabi_adapter):
     # Check args to store_json
     assert call_args[0] == result  # s3_path
     assert "shade" in call_args[1]  # complete_data
-    assert call_args[1]["shade"] == shade_data
+    
+    # Check expected structure matches our transformed structure
+    expected_shade = {
+        "name": shade_data["name"],
+        "summary": shade_data["summary"],
+        "confidence": shade_data["confidence"],
+        "center_embedding": None
+    }
+    assert call_args[1]["shade"] == expected_shade
     assert "notes" in call_args[1]
     assert len(call_args[1]["notes"]) == 2
 
@@ -195,4 +203,12 @@ def test_store_merged_shade_data(shade_generator, mock_wasabi_adapter):
     # Check args to store_json
     assert call_args[0] == result  # s3_path
     assert "shade" in call_args[1]  # complete_data
-    assert call_args[1]["shade"] == shade_data 
+    
+    # Check expected structure matches our transformed structure
+    expected_shade = {
+        "name": shade_data["name"],
+        "summary": shade_data["summary"],
+        "confidence": shade_data["confidence"],
+        "center_embedding": None
+    }
+    assert call_args[1]["shade"] == expected_shade 

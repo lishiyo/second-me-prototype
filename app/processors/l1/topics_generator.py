@@ -10,6 +10,7 @@ import json
 import copy
 import traceback
 from typing import List, Dict, Any, Optional, Tuple, Union
+from datetime import datetime
 import numpy as np
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import cdist
@@ -20,34 +21,40 @@ from app.services.llm_service import LLMService
 logger = logging.getLogger(__name__)
 
 # LLM Prompt Templates
-SYS_TOPICS = """You are an expert clustering and categorization system. Your task is to generate a concise topic label and a set of relevant tags for the following text content."""
+SYS_TOPICS = """You are a skilled wordsmith with extensive experience in managing structured knowledge documents. Given a knowledge chunk, your main task involves crafting phrases that accurately represent provided chunk as "topics" and generating concise "tags" for categorization purposes. The tags, several nouns, should be broader and more general than the topic. Here are some examples illustrating effective pairing of topics and tags:
 
-USR_TOPICS = """
-Based on the following text, please generate:
-1. A concise topic that best represents this content (3-5 words)
-2. A list of 3-5 relevant tags (single words or short phrases)
+{"topic": "Decoder-only transformers pretraining on large-scale corpora", "tags": ["Transformers", "Pretraining", "Large-scale corpora"]}
+{"topic": "Formula 1 racing car aerodynamics learning", "tags": ["Formula 1", "Racing", "Aerodynamics"]}
+{"topic": "1980s Progressive Rock bands and their discographies", "tags": ["Progressive Rock", "Bands", "Discographies"]}
+{"topic": "Czech Republic's history and culture during medieval times", "tags": ["Czech Republic", "History", "Culture"]}
+{"topic": "Revolution of European Political Economy in the 19th century", "tags": ["Political Economy", "Revolution", "Europe"]}
 
-Text content:
+Guidelines for generating effective "topics" and "tags" are as follows:
+1. A good topic should be concise, informative, and specifically capture the essence of the note without being overly broad or vague.
+2. The tags should be 3-5 nouns and more general than the topic, serving as a category or a prompt for further dialogue.
+3. Ideally, a topic should comprise 5-10 words, while each tag should be limited to 1-3 words.
+4. Use double quotes in your response and make sure it can be parsed using json.loads(), as shown in the examples above."""
+
+USR_TOPICS = """Please generate a topic and tags for the knowledge chunk provided below, using the format of the examples previously mentioned. Just produce the topic and tags using the same JSON format as the examples.
+
 {chunk}
-
-Please format your response as a JSON object with the following structure:
-{{"topic": "The Topic", "tags": ["tag1", "tag2", "tag3"]}}
 """
 
-SYS_COMB = """You are an expert system for combining and consolidating topics and tags from multiple sources."""
+SYS_COMB = """You are a skilled wordsmith with extensive experience in managing structured knowledge documents. Given a set of topics and a set of tags, your main task involves crafting a new topic and a new set of tags that accurately represent the provided topics and tags. Here are some examples illustrating effective merging of topics and tags:
+1. Given topics: "Decoder-only transformers pretraining on large-scale corpora", "Parameter Effcient LLM Finetuning" and tags: ["Transformers", "Pretraining", "Large-scale corpora"], ["LLM", "Parameter Efficient", Finetuning"], you can merge them into: {"topic": "Efficient transformers pretraining and finetuning on large-scale corpora", "tags": ["Transformers", "Pretraining", "Finetuning"]}.
+2. Given topics: "Formula 1 racing car aerodynamics learning", "Formula 1 racing car design optimization" and tags: ["Formula 1", "Racing", "Aerodynamics"], ["Formula 1", "Design", "Optimization"], you can merge them into: {"topic": "Formula 1 racing car aerodynamics and design optimization", "tags": ["Formula 1", "Racing", "Aerodynamics", "Design", "Optimization"]}.
 
-USR_COMB = """
-I have multiple topics and their associated tags that need to be combined into a single, coherent topic with consolidated tags.
+Guidelines for generating representative topic and tags are as follows:
+1. The new topic should be a concise and informative summary of the provided topics, capturing the essence of the topics without being overly broad or vague.
+2. The new tags should be 3-5 nouns, combining the tags from the provided topics, and should be more general than the new topic, serving as a category or a prompt for further dialogue.
+3. Ideally, a topic should comprise 5-10 words, while each tag should be limited to 1-3 words.
+4. Use double quotes in your response and make sure it can be parsed using json.loads(), as shown in the examples above."""
+
+USR_COMB = """Please generate the new topic and new tags for the given set of topics and tags, using the format of the examples previously mentioned. Just produce the new topic and tags using the same JSON format as the examples.
 
 Topics: {topics}
-Tags: {tags}
 
-Please create:
-1. A single, unified topic that best represents all of these
-2. A consolidated list of 5-7 most relevant tags without duplicates
-
-Please format your response as a JSON object with the following structure:
-{{"topic": "The Combined Topic", "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"]}}
+Tags list: {tags}
 """
 
 
@@ -147,6 +154,11 @@ class TopicsGenerator:
             logger.info("No existing clusters, performing cold start")
             # Transform memory list into a format suitable for clustering
             notes_list = self._convert_memories_to_notes(new_memory_list)
+            
+            # Create a mapping between note IDs and memory indices
+            memory_id_to_index = {memory["memoryId"]: i for i, memory in enumerate(new_memory_list)}
+            
+            # Generate topics
             cluster_data = self.generate_topics(notes_list)
             
             # Transform the cluster_data into the expected output format
@@ -157,11 +169,18 @@ class TopicsGenerator:
             
             if cluster_data:
                 for cluster_id, cluster in cluster_data.items():
+                    # Get the document IDs from the cluster
+                    doc_ids = cluster.get("docIds", [])
+                    
+                    # Map document IDs to memory indices
+                    memory_indices = [memory_id_to_index[doc_id] for doc_id in doc_ids if doc_id in memory_id_to_index]
+                    
+                    # Create the cluster object with memories
                     cluster_obj = {
                         "clusterId": cluster_id,
-                        "topic": cluster["topic"],
-                        "tags": cluster["tags"],
-                        "memoryList": [new_memory_list[i] for i in cluster["indices"]]
+                        "topic": cluster.get("topic", "Unknown Topic"),
+                        "tags": cluster.get("tags", []),
+                        "memoryList": [new_memory_list[i] for i in memory_indices]
                     }
                     result["clusterList"].append(cluster_obj)
             
@@ -190,8 +209,9 @@ class TopicsGenerator:
         notes = []
         for memory in memory_list:
             # Create Note from memory
+            memory_id = memory.get("memoryId", "")
             note = Note(
-                id=memory.get("memoryId", ""),
+                id=memory_id,  # Make sure id matches memoryId for proper mapping
                 content=memory.get("content", ""),
                 create_time=memory.get("createTime", datetime.now()),
                 embedding=memory.get("embedding"),
@@ -206,7 +226,7 @@ class TopicsGenerator:
                         id=chunk_data.get("id", ""),
                         content=chunk_data.get("content", ""),
                         embedding=chunk_data.get("embedding"),
-                        document_id=memory.get("memoryId")
+                        document_id=memory_id  # Use memory_id for proper mapping
                     )
                     note.chunks.append(chunk)
             

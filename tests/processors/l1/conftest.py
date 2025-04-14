@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 from app.models.l1.bio import Bio
+from app.models.l1.note import Note, Chunk
 from app.models.l1.shade import Shade as L1Shade
 
 
@@ -13,6 +14,7 @@ def mock_llm_service():
     # based on the system prompt in the request
     def mock_completion(messages):
         system_message = messages[0]['content'] if messages and messages[0]['role'] == 'system' else ''
+        user_message = messages[1]['content'] if len(messages) > 1 and messages[1]['role'] == 'user' else ''
         
         # For biography generation (matches both old and new prompts)
         if "creating detailed, insightful, and accurate biographies" in system_message or "clever and perceptive individual" in system_message:
@@ -69,13 +71,57 @@ def mock_llm_service():
                     }
                 ]
             }
+        # For topic generation
+        elif "expert clustering and categorization system" in system_message:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Test Generated Topic", "tags": ["test", "topic", "generated"]}'
+                        }
+                    }
+                ]
+            }
+        # For SYS_COMB in topics_generator
+        elif "skilled wordsmith" in system_message and "set of topics" in system_message:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
+                        }
+                    }
+                ]
+            }
+        # For cluster topics combining
+        elif "expert system for combining and consolidating topics" in system_message:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic", "merged"]}'
+                        }
+                    }
+                ]
+            }
+        # For any test_gen_cluster_topic call with specific test values
+        elif "Test Topic 1" in user_message and "Test Topic 2" in user_message:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
+                        }
+                    }
+                ]
+            }
         # Default response
         else:
             return {
                 "choices": [
                     {
                         "message": {
-                            "content": "Default mock response"
+                            "content": '{"topic": "Default Topic", "tags": ["default", "topic"]}'
                         }
                     }
                 ]
@@ -141,26 +187,46 @@ def sample_clusters():
 
 
 @pytest.fixture
-def sample_notes():
-    """Return sample notes for testing."""
-    from app.models.l1.note import Note
-    
+def sample_chunks():
+    """Return sample chunks for testing."""
     return [
-        Note(
-            id="note1",
-            title="Test Note 1",
-            content="This is test note 1",
-            create_time="2023-01-01T00:00:00Z",
-            embedding=[0.1, 0.2, 0.3]
+        Chunk(
+            id="chunk1",
+            content="This is test chunk 1",
+            embedding=[0.1, 0.2, 0.3],
+            document_id="doc1"
         ),
-        Note(
-            id="note2",
-            title="Test Note 2",
-            content="This is test note 2",
-            create_time="2023-01-02T00:00:00Z",
-            embedding=[0.4, 0.5, 0.6]
+        Chunk(
+            id="chunk2",
+            content="This is test chunk 2",
+            embedding=[0.4, 0.5, 0.6],
+            document_id="doc2"
         )
     ]
+
+
+@pytest.fixture
+def sample_notes(sample_chunks):
+    """Return sample notes for testing."""
+    note1 = Note(
+        id="note1",
+        title="Test Note 1",
+        content="This is test note 1",
+        create_time="2023-01-01T00:00:00Z",
+        embedding=[0.1, 0.2, 0.3]
+    )
+    note1.chunks = [sample_chunks[0]]
+    
+    note2 = Note(
+        id="note2",
+        title="Test Note 2",
+        content="This is test note 2",
+        create_time="2023-01-02T00:00:00Z",
+        embedding=[0.4, 0.5, 0.6]
+    )
+    note2.chunks = [sample_chunks[1]]
+    
+    return [note1, note2]
 
 
 @pytest.fixture

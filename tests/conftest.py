@@ -173,7 +173,67 @@ def mock_llm_service():
         system_content = messages[0]["content"] if len(messages) > 0 and "content" in messages[0] else ""
         user_content = messages[1]["content"] if len(messages) > 1 and "content" in messages[1] else ""
         
-        if "topic" in system_content.lower() and "tags" in user_content.lower():
+        # For test_gen_cluster_topic - look for specific test values in user_content
+        if '"Test Topic 1"' in user_content and '"Test Topic 2"' in user_content:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
+                        }
+                    }
+                ]
+            }
+        
+        # This is a catch-all for any _gen_cluster_topic call
+        elif user_content.startswith("Please generate the new topic and new tags"):
+            print("MATCHED: user_content starts with 'Please generate the new topic and new tags'")
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
+                        }
+                    }
+                ]
+            }
+        
+        # Specific check for gen_cluster_topic function (directly match the strings from SYS_COMB and USR_COMB)
+        elif (system_content.startswith("You are a skilled wordsmith with extensive experience") and 
+            "crafting a new topic and a new set of tags" in system_content):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
+                        }
+                    }
+                ]
+            }
+        # Other conditions (keep these as fallbacks)
+        elif system_content.startswith("You are a skilled wordsmith") and "knowledge chunk" in system_content:
+            # This is for SYS_TOPICS prompt
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Test Topic", "tags": ["test", "topic", "example"]}'
+                        }
+                    }
+                ]
+            }
+        elif "Topics: " in user_content and "Tags list: " in user_content:
+            # This matches the USR_COMB format
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
+                        }
+                    }
+                ]
+            }
+        elif "topic" in system_content.lower() and "tags" in user_content.lower():
             return topic_response
         elif "shade" in system_content.lower() and "documents" in user_content.lower():
             return shade_response
@@ -184,12 +244,15 @@ def mock_llm_service():
         elif "perspective" in system_content.lower():
             return perspective_response
         else:
+            # For debugging purposes, print what we're receiving
+            print(f"UNMATCHED PROMPT - System: {system_content[:50]}... User: {user_content[:50]}...")
+            
             # Default response
             return {
                 "choices": [
                     {
                         "message": {
-                            "content": "Default mock response"
+                            "content": '{"topic": "Default Topic", "tags": ["default", "tags"]}'
                         }
                     }
                 ]
