@@ -154,9 +154,11 @@ class L1Manager:
                     user_id, new_version, "completed"
                 )
                 
-                # 6. Build result object
+                # 6. Build result object with updated structure
                 result = L1GenerationResult.success(
-                    bio=bio, clusters=clusters, chunk_topics=chunk_topics
+                    bio=bio, 
+                    clusters=clusters, 
+                    chunk_topics=chunk_topics
                 )
                 
                 logger.info("L1 generation completed successfully")
@@ -198,7 +200,7 @@ class L1Manager:
         version: int,
         bio: Bio,
         clusters: Dict[str, Any],
-        chunk_topics: List[Dict[str, Any]]
+        chunk_topics: Dict[str, Dict]  # Updated from List[Dict[str, Any]]
     ) -> None:
         """
         Store L1 data in PostgreSQL, Wasabi, and Weaviate.
@@ -208,7 +210,7 @@ class L1Manager:
             version: Version number
             bio: Biography data
             clusters: Clusters data
-            chunk_topics: Chunk topics data
+            chunk_topics: Chunk topics data (now a Dict[str, Dict])
         """
         # TODO: Implement storing L1 data in PostgreSQL, Wasabi, and Weaviate
         pass

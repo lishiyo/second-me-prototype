@@ -294,9 +294,10 @@ class TestL1Models(unittest.TestCase):
                 ],
                 "outlierList": []
             },
-            chunk_topics=[
-                {"id": "topic1", "name": "Topic 1"}
-            ]
+            chunk_topics={
+                "topic1": {"indices": [0, 1], "docIds": ["doc1", "doc2"], "name": "Topic 1"}
+            },
+            generate_time=datetime.now()  # Use generate_time instead of generated_at
         )
         
         # Test serialization/deserialization
@@ -305,7 +306,7 @@ class TestL1Models(unittest.TestCase):
         
         self.assertEqual(result.bio.content_third_view, result2.bio.content_third_view)
         self.assertEqual(result.clusters["clusterList"][0]["id"], result2.clusters["clusterList"][0]["id"])
-        self.assertEqual(result.chunk_topics[0]["id"], result2.chunk_topics[0]["id"])
+        self.assertEqual(result.chunk_topics["topic1"]["name"], result2.chunk_topics["topic1"]["name"])
         self.assertEqual(result.status, result2.status)
         
         # Test factory methods
@@ -316,6 +317,8 @@ class TestL1Models(unittest.TestCase):
         failure_result = L1GenerationResult.failure("Test error")
         self.assertEqual(failure_result.status, "failed")
         self.assertEqual(failure_result.error, "Test error")
+        # Check clusters structure in failure case
+        self.assertEqual(failure_result.clusters, {"clusterList": []})
 
 
 if __name__ == "__main__":
