@@ -75,7 +75,7 @@ class TopicsGenerator:
     
     def __init__(
         self,
-        llm_service: Optional[LLMService] = None,
+        llm_service: LLMService,
         default_cophenetic_distance: float = 0.7,
         default_outlier_cutoff_distance: float = 0.9,
         default_cluster_merge_distance: float = 0.75
@@ -85,11 +85,11 @@ class TopicsGenerator:
         
         Args:
             llm_service: Service for LLM interactions
-            default_cophenetic_distance: Distance threshold for hierarchical clustering
-            default_outlier_cutoff_distance: Distance threshold to determine outliers
-            default_cluster_merge_distance: Distance threshold for merging clusters
+            default_cophenetic_distance: Default distance threshold for hierarchical clustering
+            default_outlier_cutoff_distance: Default distance threshold to determine outliers
+            default_cluster_merge_distance: Default distance threshold for merging clusters
         """
-        self.llm_service = llm_service or LLMService()
+        self.llm_service = llm_service
         self.default_cophenetic_distance = default_cophenetic_distance
         self.default_outlier_cutoff_distance = default_outlier_cutoff_distance
         self.default_cluster_merge_distance = default_cluster_merge_distance

@@ -40,9 +40,9 @@ class L1Generator:
     
     def __init__(
         self,
-        topics_generator: Optional[TopicsGenerator] = None,
-        shade_generator: Optional[ShadeGenerator] = None,
-        biography_generator: Optional[BiographyGenerator] = None
+        topics_generator: TopicsGenerator,
+        shade_generator: ShadeGenerator,
+        biography_generator: BiographyGenerator
     ):
         """
         Initialize the L1Generator.
@@ -52,9 +52,9 @@ class L1Generator:
             shade_generator: ShadeGenerator instance
             biography_generator: BiographyGenerator instance
         """
-        self.topics_generator = topics_generator or TopicsGenerator()
-        self.shade_generator = shade_generator or ShadeGenerator()
-        self.biography_generator = biography_generator or BiographyGenerator()
+        self.topics_generator = topics_generator
+        self.shade_generator = shade_generator
+        self.biography_generator = biography_generator
     
     def generate_topics(self, notes_list: List[Note]) -> Dict[str, Any]:
         """

@@ -2,6 +2,7 @@
 """
 Test script to verify the _extract_notes_from_l0 method in L1Manager.
 This script tests connecting to real data sources and processing real files.
+Updated to use proper dependency injection for all components.
 """
 import os
 import sys
@@ -64,13 +65,16 @@ def test_extract_notes_from_l0():
     rel_db = None
     vector_db = None
     session = None
-    wasabi_adapter = None
-    weaviate_adapter = None
     
     start_time = time.time()
     
     try:
-        # 1. Initialize PostgreSQL connection
+        #--------------------------------------------------------------------------
+        # 1. Create all adapters first (lowest level components)
+        #--------------------------------------------------------------------------
+        logger.info("STEP 1: Initializing core adapters...")
+        
+        # 1.1 Initialize PostgreSQL adapter
         logger.info("Connecting to PostgreSQL...")
         rel_db = RelationalDB(
             host=settings.DB_HOST,
@@ -83,7 +87,7 @@ def test_extract_notes_from_l0():
         postgres_adapter = PostgresAdapter(rel_db=rel_db)
         logger.info("Successfully connected to PostgreSQL")
         
-        # 2. Initialize Wasabi connection
+        # 1.2 Initialize Wasabi adapter
         logger.info("Connecting to Wasabi S3...")
         logger.debug(f"Using endpoint: {settings.WASABI_ENDPOINT}")
         logger.debug(f"Using bucket: {settings.WASABI_BUCKET}")
@@ -95,11 +99,9 @@ def test_extract_notes_from_l0():
             bucket_name=settings.WASABI_BUCKET,
             region_name=settings.WASABI_REGION
         )
-        # The adapter is initialized, we don't need to test the connection here
-        # as it will be used during the L1Manager methods
         logger.info("Wasabi adapter initialized")
         
-        # 3. Initialize Weaviate connection
+        # 1.3 Initialize Weaviate adapter
         logger.info("Connecting to Weaviate...")
         logger.debug(f"Using URL: {settings.WEAVIATE_URL}")
         vector_db = VectorDB(
@@ -110,66 +112,78 @@ def test_extract_notes_from_l0():
         weaviate_adapter = WeaviateAdapter(client=vector_db.client)
         logger.info("Successfully connected to Weaviate")
         
-        # 4. Initialize shared LLM service
+        # 1.4 Initialize LLM service
         logger.info("Initializing LLM service...")
         llm_service = LLMService()
         logger.info("LLM service initialized")
         
-        # 5. Create all generator components WITH shared adapters
-        logger.info("Creating generator components with shared adapters...")
+        #--------------------------------------------------------------------------
+        # 2. Create the generator components with proper dependencies
+        #--------------------------------------------------------------------------
+        logger.info("STEP 2: Creating generator components...")
         
-        # Topics generator
+        # 2.1 Create TopicsGenerator
         logger.info("Creating TopicsGenerator...")
-        topics_generator = TopicsGenerator(llm_service=llm_service)
+        topics_generator = TopicsGenerator(
+            llm_service=llm_service
+        )
         
-        # Shade generator
+        # 2.2 Create ShadeGenerator
         logger.info("Creating ShadeGenerator...")
         shade_generator = ShadeGenerator(
-            wasabi_adapter=wasabi_adapter,
-            llm_service=llm_service
+            llm_service=llm_service,
+            wasabi_adapter=wasabi_adapter
         )
         
-        # Shade merger
+        # 2.3 Create ShadeMerger (depends on ShadeGenerator)
         logger.info("Creating ShadeMerger...")
-        shade_merger = ShadeMerger(shade_generator=shade_generator)
+        shade_merger = ShadeMerger(
+            shade_generator=shade_generator
+        )
         
-        # Biography generator
+        # 2.4 Create BiographyGenerator
         logger.info("Creating BiographyGenerator...")
         biography_generator = BiographyGenerator(
-            wasabi_adapter=wasabi_adapter,
-            llm_service=llm_service
+            llm_service=llm_service,
+            wasabi_adapter=wasabi_adapter
         )
         
-        # Create L1Generator with our existing components
+        # 2.5 Create L1Generator (depends on other generators)
         logger.info("Creating L1Generator...")
         l1_generator = L1Generator(
             topics_generator=topics_generator,
             shade_generator=shade_generator,
             biography_generator=biography_generator
         )
-        logger.info("L1Generator initialized successfully")
         
-        # 6. Initialize L1Manager with all our shared components
-        logger.info("Initializing L1Manager...")
+        #--------------------------------------------------------------------------
+        # 3. Initialize L1Manager with all dependencies properly injected
+        #--------------------------------------------------------------------------
+        logger.info("STEP 3: Initializing L1Manager with all injected dependencies...")
         l1_manager = L1Manager(
             postgres_adapter=postgres_adapter,
             weaviate_adapter=weaviate_adapter,
             wasabi_adapter=wasabi_adapter,
+            l1_generator=l1_generator,
             topics_generator=topics_generator,
             shade_generator=shade_generator,
             shade_merger=shade_merger,
-            biography_generator=biography_generator,
-            l1_generator=l1_generator  # Pass the initialized L1Generator
+            biography_generator=biography_generator
         )
         logger.info("L1Manager initialized successfully")
         
-        # 7. Test the _extract_notes_from_l0 method
+        #--------------------------------------------------------------------------
+        # 4. Run the test method
+        #--------------------------------------------------------------------------
         user_id = settings.DEFAULT_USER_ID
-        logger.info(f"Calling _extract_notes_from_l0 for user {user_id}...")
+        logger.info(f"STEP 4: Calling _extract_notes_from_l0 for user {user_id}...")
         
         notes_list, memory_list = l1_manager._extract_notes_from_l0(user_id)
         
-        # 8. Validate the results
+        #--------------------------------------------------------------------------
+        # 5. Validate and display the results
+        #--------------------------------------------------------------------------
+        logger.info(f"STEP 5: Processing results...")
         logger.info(f"Extracted {len(notes_list)} notes and {len(memory_list)} memory items")
         
         if not notes_list or not memory_list:
@@ -177,7 +191,7 @@ def test_extract_notes_from_l0():
             logger.info("\n⚠️ _extract_notes_from_l0 test completed, but no data was found")
             return True
         
-        # 9. Display results for first few notes
+        # Display results for first few notes
         for i, note in enumerate(notes_list[:3]):  # Show first 3 notes
             logger.info(f"\nNote {i+1}:")
             logger.info(f"  ID: {note.id}")
@@ -252,7 +266,7 @@ def test_generate_l1_from_l0():
 
 if __name__ == "__main__":
     # Set up logger first
-    logger.info("=== Starting L1Manager methods test with REAL adapters ===")
+    logger.info("=== Starting L1Manager methods test with proper dependency injection ===")
     
     # Run the test of _extract_notes_from_l0
     notes_test_success = test_extract_notes_from_l0()

@@ -133,8 +133,8 @@ class BiographyGenerator:
     
     def __init__(
         self,
-        llm_service: Optional[LLMService] = None,
-        wasabi_adapter: Optional[WasabiStorageAdapter] = None
+        llm_service: LLMService,
+        wasabi_adapter: WasabiStorageAdapter
     ):
         """
         Initialize the BiographyGenerator.
@@ -143,8 +143,8 @@ class BiographyGenerator:
             llm_service: Service for LLM interactions
             wasabi_adapter: Adapter for Wasabi storage operations
         """
-        self.llm_service = llm_service or LLMService()
-        self.wasabi_adapter = wasabi_adapter or WasabiStorageAdapter()
+        self.llm_service = llm_service
+        self.wasabi_adapter = wasabi_adapter
     
     def generate_global_biography(
         self,

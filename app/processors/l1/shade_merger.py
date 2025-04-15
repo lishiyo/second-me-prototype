@@ -30,14 +30,14 @@ class ShadeMerger:
         shade_generator: ShadeGenerator instance for delegating merge operations
     """
     
-    def __init__(self, shade_generator: Optional[ShadeGenerator] = None):
+    def __init__(self, shade_generator: ShadeGenerator):
         """
         Initialize the ShadeMerger.
         
         Args:
             shade_generator: ShadeGenerator instance for delegating merge operations
         """
-        self.shade_generator = shade_generator or ShadeGenerator()
+        self.shade_generator = shade_generator
     
     def merge_shades(self, user_id: str, shades: List[L1Shade]) -> MergeShadeResult:
         """

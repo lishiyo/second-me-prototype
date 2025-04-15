@@ -46,14 +46,14 @@ class L1Manager:
     
     def __init__(
         self,
-        postgres_adapter: Optional[PostgresAdapter] = None,
-        wasabi_adapter: Optional[WasabiStorageAdapter] = None,
-        weaviate_adapter: Optional[WeaviateAdapter] = None,
-        l1_generator: Optional[L1Generator] = None,
-        topics_generator: Optional[TopicsGenerator] = None,
-        shade_generator: Optional[ShadeGenerator] = None,
-        shade_merger: Optional[ShadeMerger] = None,
-        biography_generator: Optional[BiographyGenerator] = None
+        postgres_adapter: PostgresAdapter,
+        wasabi_adapter: WasabiStorageAdapter,
+        weaviate_adapter: WeaviateAdapter,
+        l1_generator: L1Generator,
+        topics_generator: TopicsGenerator,
+        shade_generator: ShadeGenerator,
+        shade_merger: ShadeMerger,
+        biography_generator: BiographyGenerator
     ):
         """
         Initialize the L1Manager.
@@ -68,23 +68,16 @@ class L1Manager:
             shade_merger: ShadeMerger instance for merging similar shades
             biography_generator: BiographyGenerator instance for biography generation
         """
-        self.postgres_adapter = postgres_adapter or PostgresAdapter()
-        self.wasabi_adapter = wasabi_adapter or WasabiStorageAdapter()
-        self.weaviate_adapter = weaviate_adapter or WeaviateAdapter()
-        self.l1_generator = l1_generator or L1Generator()
+        self.postgres_adapter = postgres_adapter
+        self.wasabi_adapter = wasabi_adapter
+        self.weaviate_adapter = weaviate_adapter
+        self.l1_generator = l1_generator
         
-        # Initialize specialized generator components
-        self.topics_generator = topics_generator or TopicsGenerator()
-        self.shade_generator = shade_generator or ShadeGenerator()
-        
-        # Initialize shade merger (shares the same shade_generator if not provided)
-        if shade_merger:
-            self.shade_merger = shade_merger
-        else:
-            # If shade_merger is not provided, create a new one using the same shade_generator
-            self.shade_merger = ShadeMerger(shade_generator=self.shade_generator)
-            
-        self.biography_generator = biography_generator or BiographyGenerator()
+        # Store specialized generator components
+        self.topics_generator = topics_generator
+        self.shade_generator = shade_generator
+        self.shade_merger = shade_merger
+        self.biography_generator = biography_generator
         
         # Set up logger
         self.logger = logging.getLogger(__name__)
@@ -247,7 +240,7 @@ class L1Manager:
             if isinstance(create_time, datetime):
                 create_time = create_time.strftime("%Y-%m-%d %H:%M:%S")
             
-            # Get document insight and summary from Wasabi
+            # Get document insight, summary, and raw content from Wasabi
             document_data = self.wasabi_adapter.get_document(user_id, doc_id)
             
             # Handle case where document_data is None

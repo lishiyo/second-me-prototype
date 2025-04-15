@@ -648,7 +648,7 @@ class WasabiStorageAdapter:
             document_id: The document ID
             
         Returns:
-            Document data with title, summary, keywords or None if not found
+            Document data with title, summary, keywords, and raw content if available
         """
         try:
             # Prepare the result document data
@@ -659,7 +659,8 @@ class WasabiStorageAdapter:
                 "insight": {},
                 "summary": {},
                 "keywords": [],
-                "has_raw_content": False
+                "has_raw_content": False,
+                "raw_content": ""  # Initialize with empty content
             }
             
             # Get document insight from metadata folder
@@ -682,7 +683,7 @@ class WasabiStorageAdapter:
                     "keywords": summary_data.get("keywords", [])
                 })
             
-            # Try to get the raw content if needed (may be large)
+            # Try to get the raw content (may be large)
             try:
                 # List raw files for this document
                 raw_objects = self.blob_store.list_objects(prefix=f"tenant/{user_id}/raw/{document_id}_")
@@ -692,9 +693,18 @@ class WasabiStorageAdapter:
                     raw_path = raw_objects[0].get("Key", "")
                     document_data["raw_s3_path"] = raw_path
                     
-                    # Don't load full content by default as it could be large
-                    # Client code should request it separately if needed
-                    document_data["has_raw_content"] = True
+                    # Actually fetch the raw content
+                    try:
+                        logger.debug(f"Fetching raw content from {raw_path}")
+                        raw_data = self.blob_store.get_object(key=raw_path)
+                        if raw_data:
+                            # Try to decode as UTF-8 text
+                            raw_content = raw_data.decode('utf-8', errors='replace')
+                            document_data["raw_content"] = raw_content
+                            document_data["has_raw_content"] = True
+                            logger.debug(f"Successfully loaded raw content, length: {len(raw_content)}")
+                    except Exception as content_error:
+                        logger.warning(f"Error fetching raw content for {raw_path}: {content_error}")
             except Exception as e:
                 logger.warning(f"Error listing raw objects for document {document_id}: {e}")
                 document_data["has_raw_content"] = False
@@ -712,5 +722,6 @@ class WasabiStorageAdapter:
                 "insight": {},
                 "summary": {},
                 "keywords": [],
-                "has_raw_content": False
+                "has_raw_content": False,
+                "raw_content": ""
             } 
