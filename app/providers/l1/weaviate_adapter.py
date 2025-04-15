@@ -4,10 +4,7 @@ Weaviate adapter for L1 layer.
 This module provides an adapter for interacting with the Weaviate vector database
 for L1 data including topics, clusters, shades, and biographies.
 """
-import os
 import json
-import uuid
-import hashlib
 import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple, Union, Set
@@ -21,7 +18,7 @@ from app.models.l1.bio import Bio
 from app.models.l1.note import Note, Chunk
 from app.providers.vector_db import VectorDB
 from weaviate.collections.classes.filters import Filter
-
+            
 # Constants
 TOPICS_COLLECTION = "TenantTopic"
 CLUSTERS_COLLECTION = "TenantCluster"
@@ -1093,7 +1090,11 @@ class WeaviateAdapter:
             )
             
             if result.objects and len(result.objects) > 0:
-                return result.objects[0].vector
+                vector = result.objects[0].vector
+                
+                # Use the VectorDB utility method to handle dictionary embeddings
+                from app.providers.vector_db import VectorDB
+                return VectorDB.extract_embedding_from_dict(vector, f"document {document_id}")
             
             self.logger.warning(f"No document embedding found for document {document_id} for user {user_id}")
             return None
@@ -1125,7 +1126,7 @@ class WeaviateAdapter:
                 filters=document_filter,
                 return_properties=["document_id", "s3_path", "chunk_index", "filename", 
                                   "content_type", "timestamp", "topic", "tags"],
-                include_vector=True
+                include_vector=True # this will return a dictionary embedding {"default": [1,2,3]}
             )
             
             if not result.objects:
@@ -1135,9 +1136,6 @@ class WeaviateAdapter:
             # Import wasabi adapter here to avoid circular imports
             from app.providers.blob_store import BlobStore
             blob_store = BlobStore()
-            
-            # Import VectorDB for the static generate_consistent_id method
-            from app.providers.vector_db import VectorDB
             
             # Convert to objects with expected properties
             chunk_objects = []
@@ -1158,13 +1156,19 @@ class WeaviateAdapter:
                         self.logger.error(f"Error loading chunk content from S3 path {s3_path}: {e}")
                         # Continue with empty content if we can't load it
                 
+                # Process embedding if it's in dictionary format
+                embedding = obj.vector
+                
+                # Use VectorDB util to extract the embedding vector
+                embedding = VectorDB.extract_embedding_from_dict(embedding, f"chunk {chunk_id}")
+
                 # Create a chunk object with properties matching what L1 expects
                 # Use properties from Weaviate if available, otherwise empty defaults
                 chunk_obj = Chunk(
                     id=chunk_id,
                     document_id=document_id,
                     content=content,
-                    embedding=obj.vector,
+                    embedding=embedding,
                     tags=props.get("tags", []),  # Use tags from properties if available
                     topic=props.get("topic", ""),  # Use topic from properties if available
                     chunk_index=chunk_index
@@ -1199,11 +1203,8 @@ class WeaviateAdapter:
             result = tenant_collection.query.fetch_objects(
                 filters=document_filter,
                 return_properties=["chunk_index"],
-                include_vector=True
+                include_vector=True # this will return a dictionary embedding {"default": [1,2,3]}
             )
-            
-            # Import VectorDB to use the static generate_consistent_id method
-            from app.providers.vector_db import VectorDB
             
             # Map chunk_id to embedding
             embeddings = {}
@@ -1211,7 +1212,11 @@ class WeaviateAdapter:
                 chunk_index = obj.properties.get("chunk_index", 0)
                 chunk_id = VectorDB.generate_consistent_id(user_id, document_id, chunk_index)
                 if obj.vector:
-                    embeddings[chunk_id] = obj.vector
+                    # Use the VectorDB utility to extract the embedding vector
+                    embeddings[chunk_id] = VectorDB.extract_embedding_from_dict(obj.vector, f"chunk {chunk_id}")
+                else:
+                    logger.warning(f"No vector found for chunk {chunk_id}")
+                    embeddings[chunk_id] = []
             
             return embeddings
         except Exception as e:

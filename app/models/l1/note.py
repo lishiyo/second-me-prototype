@@ -18,6 +18,36 @@ class Chunk:
     chunk_index: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     
+    def __post_init__(self):
+        """Post-initialization processing for embedding validation"""
+        # Validate embedding and make sure it's a numpy array
+        if self.embedding is not None:
+            # Convert embedding to numpy array if it's not already
+            if not isinstance(self.embedding, np.ndarray):
+                try:
+                    # Validate that the embedding is a proper vector
+                    if isinstance(self.embedding, dict):
+                        raise ValueError(f"Chunk {self.id} received embedding in dictionary format, which should have been handled at the boundary")
+                        
+                    self.embedding = np.array(self.embedding)
+                    
+                    # Check if it's a scalar (which would be problematic)
+                    if self.embedding.shape == ():
+                        raise ValueError(f"Chunk {self.id} received a scalar embedding. This is invalid for vector operations.")
+                except Exception as e:
+                    raise ValueError(f"Error converting embedding to numpy array for chunk {self.id}: {str(e)}")
+                    
+            # Make sure embedding is 1D
+            if len(self.embedding.shape) > 1:
+                try:
+                    self.embedding = self.embedding.squeeze()
+                    
+                    # Final check to ensure we didn't end up with a scalar
+                    if self.embedding.shape == ():
+                        raise ValueError(f"Squeezing reduced embedding for chunk {self.id} to a scalar. Invalid embedding shape.")
+                except Exception as e:
+                    raise ValueError(f"Error squeezing embedding for chunk {self.id}: {str(e)}")
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation"""
         return {
@@ -32,25 +62,69 @@ class Chunk:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Chunk":
-        """Create a Chunk from a dictionary"""
+    def from_dict(cls, data: Dict) -> "Chunk":
+        """
+        Create a Chunk from a dictionary.
+        
+        Args:
+            data: Dictionary with chunk data
+        
+        Returns:
+            Chunk object
+        """
+        chunk_id = data.get("id", None)
+        document_id = data.get("document_id", None)
+        content = data.get("content", "")
+        tags = data.get("tags", [])
+        topic = data.get("topic", "")
+        embedding = data.get("embedding", None)
+        chunk_index = data.get("chunk_index", 0)
+        
+        # No longer need to handle dict embeddings here
+                
         return cls(
-            id=data.get("id", ""),
-            content=data.get("content", ""),
-            embedding=data.get("embedding"),
-            document_id=data.get("document_id"),
-            tags=data.get("tags", []),
-            topic=data.get("topic"),
-            chunk_index=data.get("chunk_index", 0),
-            metadata=data.get("metadata", {})
+            id=chunk_id,
+            document_id=document_id,
+            content=content,
+            embedding=embedding,
+            tags=tags,
+            topic=topic,
+            chunk_index=chunk_index
         )
     
     # For compatibility with lpm_kernel Chunk class
     def squeeze(self):
-        """For compatibility with numpy arrays in lpm_kernel"""
-        if self.embedding is not None and hasattr(self.embedding, 'squeeze'):
-            self.embedding = self.embedding.squeeze()
-        return self.embedding
+        """
+        Properly squeeze embedding while preserving vector structure.
+        Returns a numpy array representation of the embedding.
+        
+        Raises:
+            ValueError: If the embedding is a scalar or has invalid shape
+        """
+        if self.embedding is None:
+            return None
+        
+        # Convert to numpy array
+        embedding_array = np.array(self.embedding)
+        
+        # Check shape to ensure we don't lose dimensions
+        if embedding_array.shape == ():  # Scalar value
+            # This is an error - raise an exception
+            raise ValueError(f"Embedding for chunk {self.id} is a scalar value. Cannot use this for vector operations.")
+            
+        # If it's already a proper vector with at least one dimension, just return it
+        if len(embedding_array.shape) >= 1:
+            # Apply squeeze only if there are unnecessary dimensions (e.g., [[1,2,3]] -> [1,2,3])
+            result = embedding_array.squeeze()
+            
+            # Ensure we didn't squeeze it to a scalar
+            if result.shape == ():
+                raise ValueError(f"Squeezing reduced embedding for chunk {self.id} to a scalar. Invalid embedding shape.")
+                
+            return result
+            
+        # Should not reach here, but just in case
+        raise ValueError(f"Unexpected embedding shape {embedding_array.shape} for chunk {self.id}")
 
 
 @dataclass
@@ -62,7 +136,7 @@ class Note:
     id: str
     content: str
     create_time: Union[datetime, str]
-    embedding: Optional[List[float]] = None
+    embedding: Optional[np.ndarray] = None
     chunks: List[Chunk] = field(default_factory=list)
     title: str = ""
     summary: Dict[str, Any] = field(default_factory=dict)
@@ -70,6 +144,35 @@ class Note:
     tags: List[str] = field(default_factory=list)
     memory_type: str = "TEXT"
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Post-initialization processing for embedding validation"""
+        if self.embedding is not None:
+            # Convert to numpy array if it's not already
+            if not isinstance(self.embedding, np.ndarray):
+                try:
+                    # Validate that the embedding is a proper vector
+                    if isinstance(self.embedding, dict):
+                        raise ValueError(f"Note {self.id} received embedding in dictionary format, which should have been handled at the boundary")
+                        
+                    self.embedding = np.array(self.embedding)
+                    
+                    # Check if it's a scalar (which would be problematic)
+                    if self.embedding.shape == ():
+                        raise ValueError(f"Note {self.id} received a scalar embedding. This is invalid for vector operations.")
+                except Exception as e:
+                    raise ValueError(f"Error converting embedding to numpy array for note {self.id}: {str(e)}")
+            
+            # Make sure embedding is 1D
+            if len(self.embedding.shape) > 1:
+                try:
+                    self.embedding = self.embedding.squeeze()
+                    
+                    # Final check to ensure we didn't end up with a scalar
+                    if self.embedding.shape == ():
+                        raise ValueError(f"Squeezing reduced embedding for note {self.id} to a scalar. Invalid embedding shape.")
+                except Exception as e:
+                    raise ValueError(f"Error squeezing embedding for note {self.id}: {str(e)}")
     
     # Properties to maintain compatibility with lpm_kernel Note class
     @property

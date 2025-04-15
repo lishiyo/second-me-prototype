@@ -771,15 +771,20 @@ class VectorDB:
             # Get the object with its vector
             response = tenant_collection.query.fetch_object_by_id(
                 uuid=obj_id,
-                include_vector=True
+                include_vector=True # this will return a dictionary embedding {"default": [1,2,3]}
             )
             
             if response:
                 # Extract the properties and vector
+                embedding = response.vector
+                
+                # Extract the embedding from dictionary format if needed
+                embedding = self.extract_embedding_from_dict(embedding, f"document {document_id}")
+                
                 return {
                     "document_id": document_id,
                     "properties": response.properties,
-                    "embedding": response.vector
+                    "embedding": embedding
                 }
             
             return None
@@ -811,4 +816,38 @@ class VectorDB:
             return True
         except Exception as e:
             logger.error(f"Error deleting document {document_id}: {e}")
-            return False 
+            return False
+    
+    @staticmethod
+    def extract_embedding_from_dict(embedding: Any, object_id: str = "unknown") -> List[float]:
+        """
+        Extract embedding vector from dictionary format if needed.
+        
+        Args:
+            embedding: The embedding, which might be a dict with 'default' key
+            object_id: ID for logging purposes
+            
+        Returns:
+            The extracted embedding as a list of floats
+        """
+        if embedding is None:
+            return []
+            
+        # If it's already a list or similar, return as is
+        if not isinstance(embedding, dict):
+            return embedding
+            
+        # Extract from dictionary format
+        if 'default' in embedding:
+            print(f"VectorDB: Extracting embedding vector from dictionary with 'default' key for {object_id}")
+            return embedding['default']
+            
+        # Try to find a suitable vector in the dictionary
+        for key, value in embedding.items():
+            if isinstance(value, list):
+                print(f"VectorDB: Using '{key}' as embedding vector for {object_id}")
+                return value
+                
+        # No suitable vector found
+        print(f"VectorDB: No suitable embedding vector found in dictionary for {object_id}")
+        return [] 

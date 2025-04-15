@@ -14,9 +14,14 @@ from datetime import datetime
 import numpy as np
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import cdist
+from collections import deque, defaultdict
+import math
+import itertools
 
 from app.models.l1.note import Note, Chunk
+from app.models.l1.topic import Memory, Cluster  # Import our Cluster and Memory classes
 from app.services.llm_service import LLMService
+from app.processors.l1.utils import find_connected_components  # Import the utility function
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +126,7 @@ class TopicsGenerator:
     
     def generate_topics_for_shades(
         self,
+        user_id: str,  # Add user_id parameter for consistency
         old_cluster_list: List[Dict[str, Any]],
         old_outlier_memory_list: List[Dict[str, Any]],
         new_memory_list: List[Dict[str, Any]],
@@ -132,6 +138,7 @@ class TopicsGenerator:
         Generate topic clusters for shades by updating existing clusters or creating new ones.
         
         Args:
+            user_id: User ID for logging
             old_cluster_list: List of existing clusters
             old_outlier_memory_list: List of outlier memories from previous run
             new_memory_list: List of new memories to process
@@ -147,92 +154,455 @@ class TopicsGenerator:
         outlier_cutoff_distance = outlier_cutoff_distance or self.default_outlier_cutoff_distance
         cluster_merge_distance = cluster_merge_distance or self.default_cluster_merge_distance
         
-        logger.info(f"Generating topics for shades with {len(new_memory_list)} new memories")
+        logger.info(f"Generating topics for shades with {len(new_memory_list)} new memories for user {user_id}")
+        
+        # Convert memory dicts to Memory objects
+        new_memory_list = [self._convert_to_memory_object(memory) for memory in new_memory_list]
+        new_memory_list = [memory for memory in new_memory_list if memory.embedding is not None]
+        
+        # Convert cluster dicts to Cluster objects
+        old_cluster_list = [self._convert_to_cluster_object(cluster) for cluster in old_cluster_list]
+        old_outlier_memory_list = [self._convert_to_memory_object(memory) for memory in old_outlier_memory_list]
         
         # If no existing clusters, perform cold start
-        if not old_cluster_list or len(old_cluster_list) == 0:
-            logger.info("No existing clusters, performing cold start")
-            # Transform memory list into a format suitable for clustering
-            notes_list = self._convert_memories_to_notes(new_memory_list)
-            
-            # Create a mapping between note IDs and memory indices
-            memory_id_to_index = {memory["memoryId"]: i for i, memory in enumerate(new_memory_list)}
-            
-            # Generate topics
-            cluster_data = self.generate_topics(notes_list)
-            
-            # Transform the cluster_data into the expected output format
-            result = {
-                "clusterList": [],
-                "outlierMemoryList": []
-            }
-            
-            if cluster_data:
-                for cluster_id, cluster in cluster_data.items():
-                    # Get the document IDs from the cluster
-                    doc_ids = cluster.get("docIds", [])
-                    
-                    # Map document IDs to memory indices
-                    memory_indices = [memory_id_to_index[doc_id] for doc_id in doc_ids if doc_id in memory_id_to_index]
-                    
-                    # Create the cluster object with memories
-                    cluster_obj = {
-                        "clusterId": cluster_id,
-                        "topic": cluster.get("topic", "Unknown Topic"),
-                        "tags": cluster.get("tags", []),
-                        "memoryList": [new_memory_list[i] for i in memory_indices]
-                    }
-                    result["clusterList"].append(cluster_obj)
-            
-            return result
+        if not old_cluster_list:
+            logger.info("No existing clusters, performing initial strategy")
+            # Initial strategy for clustering
+            cluster_list, outlier_memory_list = self._clusters_initial_strategy(
+                new_memory_list, cophenetic_distance
+            )
+        else:
+            # Update strategy for existing clusters
+            logger.info("Updating existing clusters")
+            cluster_list, outlier_memory_list = self._clusters_update_strategy(
+                old_cluster_list,
+                old_outlier_memory_list,
+                new_memory_list,
+                cophenetic_distance,
+                outlier_cutoff_distance,
+                cluster_merge_distance
+            )
         
-        # Incremental update (placeholder for now)
-        logger.info("Performing incremental update with existing clusters")
-        # TODO: Implement incremental update logic
+        logger.info(f"Generated {len(cluster_list)} clusters")
+        logger.info(f"In-cluster memory count: {sum([len(cluster.memory_list) for cluster in cluster_list])}")
+        logger.info(f"Outlier memory count: {len(outlier_memory_list)}")
         
-        # Return placeholder result
+        # Convert to the expected output format
         return {
-            "clusterList": old_cluster_list,
-            "outlierMemoryList": old_outlier_memory_list
+            "clusterList": [cluster.to_json() for cluster in cluster_list],
+            "outlierMemoryList": [memory.to_json() for memory in outlier_memory_list]
         }
     
-    def _convert_memories_to_notes(self, memory_list: List[Dict[str, Any]]) -> List[Note]:
+    def _convert_to_memory_object(self, memory_data: Dict[str, Any]) -> Memory:
         """
-        Convert memory list to Note objects for processing.
+        Convert memory dictionary to Memory object.
         
         Args:
-            memory_list: List of memory dictionaries
+            memory_data: Dictionary containing memory data
             
         Returns:
-            List of Note objects
+            Memory object
         """
-        notes = []
-        for memory in memory_list:
-            # Create Note from memory
-            memory_id = memory.get("memoryId", "")
-            note = Note(
-                id=memory_id,  # Make sure id matches memoryId for proper mapping
-                content=memory.get("content", ""),
-                create_time=memory.get("createTime", datetime.now()),
-                embedding=memory.get("embedding"),
-                title=memory.get("title", ""),
-                memory_type=memory.get("memoryType", "TEXT")
-            )
-            
-            # Add chunks if available
-            if "chunks" in memory and memory["chunks"]:
-                for chunk_data in memory["chunks"]:
-                    chunk = Chunk(
-                        id=chunk_data.get("id", ""),
-                        content=chunk_data.get("content", ""),
-                        embedding=chunk_data.get("embedding"),
-                        document_id=memory_id  # Use memory_id for proper mapping
-                    )
-                    note.chunks.append(chunk)
-            
-            notes.append(note)
+        memory_id = memory_data.get("memoryId", "")
+        embedding = memory_data.get("embedding", [])
+        metadata = {k: v for k, v in memory_data.items() if k not in ["memoryId", "embedding"]}
         
-        return notes
+        return Memory(
+            memory_id=memory_id,
+            embedding=embedding,
+            metadata=metadata
+        )
+    
+    def _convert_to_cluster_object(self, cluster_data: Dict[str, Any]) -> Cluster:
+        """
+        Convert cluster dictionary to Cluster object.
+        
+        Args:
+            cluster_data: Dictionary containing cluster data
+            
+        Returns:
+            Cluster object
+        """
+        cluster_id = cluster_data.get("clusterId", "")
+        
+        memory_list = []
+        for memory_data in cluster_data.get("memoryList", []):
+            memory_list.append(self._convert_to_memory_object(memory_data))
+        
+        # Get other properties
+        name = cluster_data.get("topic", "Unknown Topic")
+        metadata = {
+            "tags": cluster_data.get("tags", [])
+        }
+        
+        cluster = Cluster(
+            id=cluster_id,
+            name=name,
+            memory_list=memory_list,
+            metadata=metadata
+        )
+        
+        return cluster
+    
+    def _clusters_initial_strategy(
+        self,
+        memory_list: List[Memory],
+        cophenetic_distance: float,
+        size_threshold: int = None
+    ) -> Tuple[List[Cluster], List[Memory]]:
+        """
+        Initial clustering strategy for memories without existing clusters.
+        
+        Args:
+            memory_list: List of Memory objects to cluster
+            cophenetic_distance: Distance threshold for hierarchical clustering
+            size_threshold: Minimum size threshold for valid clusters
+            
+        Returns:
+            A tuple containing (generated_clusters, outlier_memories)
+        """
+        if not memory_list:
+            return [], []
+            
+        # Log memory information for debugging
+        for memory in memory_list[:3]:  # Only log a few
+            logger.info(f"Memory ID: {memory.memory_id}, Embedding shape: {np.array(memory.embedding).shape if memory.embedding else 'None'}")
+        
+        # Create matrix of embeddings for clustering
+        memory_embeddings = [np.array(memory.embedding) for memory in memory_list]
+        
+        # Perform hierarchical clustering
+        if len(memory_embeddings) == 1:
+            # If only one memory, create a single cluster
+            clusters = np.array([1])
+        else:
+            # Calculate linkage and get flat clusters
+            linked = linkage(memory_embeddings, method="ward")
+            clusters = fcluster(linked, cophenetic_distance, criterion="distance")
+        
+        labels = clusters.tolist()
+        
+        # Map memories to clusters
+        cluster_dict = {}
+        for memory, label in zip(memory_list, labels):
+            if label not in cluster_dict:
+                # Create new cluster with label as the id
+                cluster_dict[label] = Cluster(
+                    id=str(label), 
+                    name="New Cluster", # TODO this is unnecessary
+                    metadata={"is_new": True}
+                )
+            cluster_dict[label].memory_list.append(memory)
+        
+        # Remove small clusters
+        cluster_list = self._remove_immature_clusters(cluster_dict, size_threshold)
+        
+        # Prune outliers from clusters
+        for cluster in cluster_list:
+            self._prune_outliers_from_cluster(cluster)
+        
+        # Identify in-cluster and outlier memories
+        in_cluster_memory_ids = [
+            memory.memory_id 
+            for cluster in cluster_list 
+            for memory in cluster.memory_list
+        ]
+        
+        outlier_memory_list = [
+            memory 
+            for memory in memory_list 
+            if memory.memory_id not in in_cluster_memory_ids
+        ]
+        
+        # logger.info(f"Initial clustering: {len(cluster_list)} clusters, {len(outlier_memory_list)} outliers")
+        logger.info(f"cluster_list: {cluster_list}")
+        logger.info(f"outlier_memory_list: {outlier_memory_list}")
+        
+        return cluster_list, outlier_memory_list
+    
+    def _remove_immature_clusters(self, cluster_dict: Dict[Any, Cluster], size_threshold: int = None) -> List[Cluster]:
+        """
+        Remove clusters that are too small (immature).
+        
+        Args:
+            cluster_dict: Dictionary mapping cluster IDs to Cluster objects
+            size_threshold: Size threshold below which clusters are considered immature
+            
+        Returns:
+            List of clusters that meet the size threshold
+        """
+        if not cluster_dict:
+            return []
+            
+        # Calculate size threshold if not provided
+        if not size_threshold:
+            max_cluster_size = max(len(cluster.memory_list) for cluster in cluster_dict.values())
+            size_threshold = math.sqrt(max_cluster_size)
+            
+        # Keep only clusters that meet the size threshold
+        cluster_list = [
+            cluster
+            for _, cluster in cluster_dict.items()
+            if len(cluster.memory_list) >= size_threshold
+        ]
+        
+        logger.info(f"Removed {len(cluster_dict) - len(cluster_list)} immature clusters (threshold: {size_threshold})")
+        
+        return cluster_list
+    
+    def _prune_outliers_from_cluster(self, cluster: Cluster) -> None:
+        """
+        Remove outlier memories from a cluster based on distance from center.
+        
+        Args:
+            cluster: Cluster object to prune outliers from
+        """
+        if len(cluster.memory_list) <= 2:
+            # Not enough memories to prune
+            return
+            
+        # Calculate cluster center
+        memory_embeddings = [np.array(memory.embedding) for memory in cluster.memory_list]
+        center = np.mean(memory_embeddings, axis=0)
+        
+        # Calculate distances from center
+        distances = [np.linalg.norm(np.array(memory.embedding) - center) for memory in cluster.memory_list]
+        
+        # Calculate statistics for outlier detection
+        mean_dist = np.mean(distances)
+        std_dist = np.std(distances)
+        threshold = mean_dist + 2 * std_dist  # Example threshold: 2 standard deviations from mean
+        
+        # Identify non-outliers
+        non_outlier_indices = [i for i, dist in enumerate(distances) if dist <= threshold]
+        
+        # Keep only non-outlier memories
+        cluster.memory_list = [cluster.memory_list[i] for i in non_outlier_indices]
+        
+        # Update center embedding
+        if len(cluster.memory_list) > 0:
+            cluster.center_embedding = self._calculate_cluster_center(cluster)
+    
+    def _calculate_cluster_center(self, cluster: Cluster) -> List[float]:
+        """
+        Calculate the center embedding of a cluster.
+        
+        Args:
+            cluster: Cluster to calculate center for
+            
+        Returns:
+            Center embedding as a list of floats
+        """
+        memory_embeddings = [np.array(memory.embedding) for memory in cluster.memory_list]
+        if not memory_embeddings:
+            return []
+            
+        center = np.mean(memory_embeddings, axis=0).tolist()
+        return center
+    
+    def _clusters_update_strategy(
+        self,
+        cluster_list: List[Cluster],
+        outlier_memory_list: List[Memory],
+        new_memory_list: List[Memory],
+        cophenetic_distance: float,
+        outlier_cutoff_distance: float,
+        cluster_merge_distance: float
+    ) -> Tuple[List[Cluster], List[Memory]]:
+        """
+        Update existing clusters with new memories and handle outliers.
+        
+        Args:
+            cluster_list: List of existing Cluster objects
+            outlier_memory_list: List of outlier Memory objects from previous run
+            new_memory_list: List of new Memory objects to process
+            cophenetic_distance: Distance threshold for hierarchical clustering
+            outlier_cutoff_distance: Distance threshold to determine outliers
+            cluster_merge_distance: Distance threshold for merging clusters
+            
+        Returns:
+            A tuple containing (updated_clusters, new_outlier_memories)
+        """
+        # Track which clusters were updated
+        updated_cluster_ids = set()
+        
+        # Calculate cluster centers if not already done
+        for cluster in cluster_list:
+            if not hasattr(cluster, 'cluster_center') or cluster.cluster_center is None:
+                cluster.cluster_center = np.array(self._calculate_cluster_center(cluster))
+        
+        # Assign new memories to nearest clusters or mark as outliers
+        for memory in new_memory_list:
+            if memory.embedding is None:
+                continue
+                
+            # Find nearest cluster
+            nearest_cluster, distance = self._find_nearest_cluster(cluster_list, memory)
+            
+            # If close enough, add to cluster
+            if distance < outlier_cutoff_distance:
+                nearest_cluster.memory_list.append(memory)
+                updated_cluster_ids.add(nearest_cluster.id)
+            else:
+                outlier_memory_list.append(memory)
+        
+        # Merge close clusters
+        merge_cluster_ids_list, merge_cluster_list = self._merge_closed_clusters(
+            cluster_list, cluster_merge_distance
+        )
+        
+        # Filter out clusters that were merged
+        merged_ids = list(itertools.chain(*merge_cluster_ids_list)) if merge_cluster_ids_list else []
+        updated_cluster_list = [
+            cluster
+            for cluster in cluster_list
+            if cluster.id in updated_cluster_ids and cluster.id not in merged_ids
+        ]
+        
+        # Determine size threshold for small clusters
+        if updated_cluster_list or merge_cluster_list:
+            all_clusters = updated_cluster_list + merge_cluster_list
+            size_threshold = math.sqrt(max([len(cluster.memory_list) for cluster in all_clusters]))
+        else:
+            size_threshold = math.sqrt(max([len(cluster.memory_list) for cluster in cluster_list])) if cluster_list else 1
+        
+        # Process outliers
+        if outlier_memory_list:
+            outlier_cluster_list, new_outlier_memory_list = self._clusters_initial_strategy(
+                outlier_memory_list, cophenetic_distance, size_threshold
+            )
+        else:
+            outlier_cluster_list, new_outlier_memory_list = [], []
+        
+        # Combine all clusters
+        final_cluster_list = updated_cluster_list + merge_cluster_list + outlier_cluster_list
+        
+        return final_cluster_list, new_outlier_memory_list
+    
+    def _find_nearest_cluster(self, cluster_list: List[Cluster], memory: Memory) -> Tuple[Cluster, float]:
+        """
+        Find the nearest cluster to a memory based on embedding distance.
+        
+        Args:
+            cluster_list: List of clusters to search
+            memory: Memory to find nearest cluster for
+            
+        Returns:
+            A tuple containing (nearest_cluster, distance_to_cluster)
+        """
+        if not cluster_list:
+            # Should not happen, but handle gracefully
+            return None, float('inf')
+            
+        # Calculate distances to each cluster center
+        distances = [
+            np.linalg.norm(np.array(memory.embedding) - np.array(self._calculate_cluster_center(cluster)))
+            for cluster in cluster_list
+        ]
+        
+        # Find nearest cluster
+        nearest_idx = np.argmin(distances)
+        return cluster_list[nearest_idx], distances[nearest_idx]
+    
+    def _merge_closed_clusters(
+        self, 
+        cluster_list: List[Cluster], 
+        cluster_merge_distance: float
+    ) -> Tuple[List[List[str]], List[Cluster]]:
+        """
+        Merge clusters that are close to each other based on the distance threshold.
+        
+        Args:
+            cluster_list: List of clusters to check for merging
+            cluster_merge_distance: Threshold distance for merging clusters
+            
+        Returns:
+            A tuple containing (list_of_merged_cluster_ids, list_of_merged_clusters)
+        """
+        if len(cluster_list) <= 1:
+            return [], []
+            
+        # Use the utility function for finding connected components
+        connected_clusters_list = self._find_connected_components(
+            cluster_list, cluster_merge_distance
+        )
+        
+        # Keep only components with multiple clusters
+        connected_clusters_list = [cc for cc in connected_clusters_list if len(cc) > 1]
+        
+        if not connected_clusters_list:
+            return [], []
+            
+        # Merge each group of connected clusters
+        merge_cluster_ids_list = []
+        merge_cluster_list = []
+        
+        for connected_clusters in connected_clusters_list:
+            merge_cluster_ids = [cluster.id for cluster in connected_clusters]
+            merge_cluster_ids_list.append(merge_cluster_ids)
+            
+            # Create merged cluster
+            merged_cluster = self._merge_clusters(connected_clusters)
+            merge_cluster_list.append(merged_cluster)
+        
+        return merge_cluster_ids_list, merge_cluster_list
+    
+    def _merge_clusters(self, connected_clusters: List[Cluster]) -> Cluster:
+        """
+        Merge a list of connected clusters into a single cluster.
+        
+        Args:
+            connected_clusters: List of clusters to merge
+            
+        Returns:
+            A new merged cluster
+        """
+        if not connected_clusters:
+            return None
+            
+        # Generate a new ID for the merged cluster
+        new_id = f"merged-{connected_clusters[0].id}-{len(connected_clusters)}"
+        
+        # Create new cluster
+        new_cluster = Cluster(
+            id=new_id,
+            name=connected_clusters[0].name,  # Will be updated later with proper topic generation
+            metadata={
+                "is_new": True,
+                "merge_list": [cluster.id for cluster in connected_clusters]
+            }
+        )
+        
+        # Add all memories from all clusters
+        for cluster in connected_clusters:
+            new_cluster.memory_list.extend(cluster.memory_list)
+        
+        # Calculate center embedding
+        new_cluster.center_embedding = self._calculate_cluster_center(new_cluster)
+        
+        return new_cluster
+    
+    def _find_connected_components(
+        self, 
+        cluster_list: List[Cluster], 
+        cluster_merge_distance: float
+    ) -> List[List[Cluster]]:
+        """
+        Finds connected components in a list of clusters based on a distance threshold.
+        
+        Args:
+            cluster_list: List of Cluster objects to analyze
+            cluster_merge_distance: Maximum distance for clusters to be considered connected
+            
+        Returns:
+            List of connected components, where each component is a list of clusters
+        """
+        # Use the utility function for finding connected components
+        return find_connected_components(
+            cluster_list=cluster_list,
+            cluster_merge_distance=cluster_merge_distance,
+            get_center_fn=self._calculate_cluster_center
+        )
     
     def _cold_start(self, notes_list: List[Note]) -> Dict[str, Any]:
         """

@@ -217,11 +217,29 @@ class L1Manager:
             # Get document embedding from Weaviate
             doc_embedding = self.weaviate_adapter.get_document_embedding(user_id, doc_id)
             
+            # Process document embedding - handle potential dict format from Weaviate
+            if doc_embedding:
+                if isinstance(doc_embedding, dict) and 'default' in doc_embedding:
+                    self.logger.info(f"Document {doc_id} embedding is in dict format with 'default' key, extracting vector")
+                    doc_embedding = doc_embedding['default']
+            
             # Get document chunks from Weaviate
             chunks = self.weaviate_adapter.get_document_chunks(user_id, doc_id)
             
             # Get chunk embeddings from Weaviate
             all_chunk_embeddings = self.weaviate_adapter.get_chunk_embeddings_by_document(user_id, doc_id)
+            
+            # Process chunk embeddings - handle potential dict format from Weaviate
+            processed_chunk_embeddings = {}
+            for chunk_id, embedding in all_chunk_embeddings.items():
+                if isinstance(embedding, dict) and 'default' in embedding:
+                    self.logger.info(f"Chunk {chunk_id} embedding is in dict format with 'default' key, extracting vector")
+                    processed_chunk_embeddings[chunk_id] = embedding['default']
+                else:
+                    processed_chunk_embeddings[chunk_id] = embedding
+            
+            # Use the processed embeddings
+            all_chunk_embeddings = processed_chunk_embeddings
             
             # Skip documents with missing data
             if not doc_embedding:
@@ -280,9 +298,14 @@ class L1Manager:
             notes_list.append(note)
             
             # Add to memory list for clustering - matching lpm_kernel format
+            # Make sure we're using a properly processed embedding, not a dictionary
+            processed_embedding = doc_embedding
+            if isinstance(processed_embedding, dict) and 'default' in processed_embedding:
+                processed_embedding = processed_embedding['default']
+                
             memory_list.append({
                 "memoryId": str(doc_id),
-                "embedding": doc_embedding
+                "embedding": processed_embedding
             })
         
         self.logger.info(f"Extracted {len(notes_list)} notes for user {user_id}")
