@@ -169,8 +169,8 @@ tenant/1/                           # For MVP, only user_id = 1
   │   └── ...
   └── metadata/                     # Document analysis data
       ├── doc123/
-      │   ├── insights.json         # Title, summary, keywords
-      │   └── ...
+      │   ├── insight.json         # title, insight
+      │   └── summary.json         # title, summary, keywords
       └── ...
 ```
 

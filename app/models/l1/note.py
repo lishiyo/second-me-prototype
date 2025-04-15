@@ -13,6 +13,9 @@ class Chunk:
     content: str
     embedding: Optional[List[float]] = None
     document_id: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
+    topic: Optional[str] = None
+    chunk_index: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -22,6 +25,9 @@ class Chunk:
             "content": self.content,
             "embedding": self.embedding,
             "document_id": self.document_id,
+            "tags": self.tags,
+            "topic": self.topic,
+            "chunk_index": self.chunk_index,
             "metadata": self.metadata
         }
     
@@ -33,6 +39,9 @@ class Chunk:
             content=data.get("content", ""),
             embedding=data.get("embedding"),
             document_id=data.get("document_id"),
+            tags=data.get("tags", []),
+            topic=data.get("topic"),
+            chunk_index=data.get("chunk_index", 0),
             metadata=data.get("metadata", {})
         )
 

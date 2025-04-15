@@ -15,6 +15,7 @@ from app.providers.vector_db import VectorDB
 from app.models.l1.topic import Topic, Cluster
 from app.models.l1.shade import Shade
 from app.models.l1.bio import Bio
+from app.models.l1.note import Chunk
 
 logger = logging.getLogger(__name__)
 
@@ -1056,4 +1057,161 @@ class WeaviateAdapter:
                 
             shades.append(shade)
             
-        return shades 
+        return shades
+
+    def get_document_embedding(self, user_id: str, document_id: str) -> Optional[List[float]]:
+        """
+        Get the embedding for a document.
+        
+        Args:
+            user_id: The user ID
+            document_id: The document ID
+            
+        Returns:
+            Document embedding vector or None if not found
+        """
+        try:
+            # Query TenantChunk collection with document_id filter, 
+            # TODO: We need an actual full-document embedding, not just a chunk
+            # Fetch the document's primary chunk as that contains the full document embedding
+            result = (
+                self.client.query
+                .get("TenantChunk", ["embedding"])
+                .with_where({
+                    "operator": "And",
+                    "operands": [
+                        {
+                            "path": ["document_id"],
+                            "operator": "Equal",
+                            "valueString": document_id
+                        },
+                        {
+                            "path": ["is_primary"],
+                            "operator": "Equal",
+                            "valueBoolean": True
+                        }
+                    ]
+                })
+                .with_tenant(user_id)  # Use Weaviate's multi-tenancy
+                .with_limit(1)
+                .do()
+            )
+            
+            chunks = result.get("data", {}).get("Get", {}).get("TenantChunk", [])
+            
+            if chunks and len(chunks) > 0 and "embedding" in chunks[0]:
+                return chunks[0]["embedding"]
+            
+            self.logger.warning(f"No embedding found for document {document_id} for user {user_id}")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting document embedding: {e}")
+            return None
+            
+    def get_document_chunks(self, user_id: str, document_id: str) -> List[Any]:
+        """
+        Get all chunks for a document with their content and embeddings.
+        
+        Args:
+            user_id: The user ID
+            document_id: The document ID
+            
+        Returns:
+            List of chunk objects with content, metadata and embeddings
+        """
+        try:
+            # Query TenantChunk collection to get metadata and s3_path references
+            result = (
+                self.client.query
+                .get("TenantChunk", ["chunk_id", "s3_path", "chunk_index", "embedding", "tags", "topic"])
+                .with_where({
+                    "path": ["document_id"],
+                    "operator": "Equal",
+                    "valueString": document_id
+                })
+                .with_tenant(user_id)  # Use Weaviate's multi-tenancy
+                .do()
+            )
+            
+            chunks_data = result.get("data", {}).get("Get", {}).get("TenantChunk", [])
+            
+            if not chunks_data:
+                self.logger.warning(f"No chunks found for document {document_id} in Weaviate")
+                return []
+            
+            # Import wasabi adapter here to avoid circular imports
+            from app.providers.blob_store import BlobStore
+            blob_store = BlobStore()
+            
+            # Convert to objects with expected properties
+            chunk_objects = []
+            for chunk_data in chunks_data:
+                chunk_id = chunk_data.get("chunk_id")
+                s3_path = chunk_data.get("s3_path")
+                
+                # Get the actual content from Wasabi
+                content = ""
+                if s3_path:
+                    try:
+                        content_bytes = blob_store.get_object(s3_path)
+                        content = content_bytes.decode('utf-8')
+                    except Exception as e:
+                        self.logger.error(f"Error loading chunk content from S3 path {s3_path}: {e}")
+                        # Continue with empty content if we can't load it
+                
+                # Create a chunk object with properties matching what L1 expects
+                chunk_obj = Chunk(
+                    id=chunk_id,
+                    document_id=document_id,
+                    content=content,
+                    embedding=chunk_data.get("embedding", []),
+                    tags=chunk_data.get("tags", []),
+                    topic=chunk_data.get("topic", ""),
+                    chunk_index=chunk_data.get("chunk_index", 0)
+                )
+                chunk_objects.append(chunk_obj)
+                
+            return chunk_objects
+        except Exception as e:
+            self.logger.error(f"Error getting document chunks: {e}")
+            return []
+            
+    def get_chunk_embeddings_by_document(self, user_id: str, document_id: str) -> Dict[str, List[float]]:
+        """
+        Get embeddings for all chunks in a document.
+        
+        Args:
+            user_id: The user ID
+            document_id: The document ID
+            
+        Returns:
+            Dictionary mapping chunk_id to embedding vector
+        """
+        try:
+            # Query TenantChunk collection with document_id filter using multi-tenancy
+            result = (
+                self.client.query
+                .get("TenantChunk", ["chunk_id", "embedding"])
+                .with_where({
+                    "path": ["document_id"],
+                    "operator": "Equal",
+                    "valueString": document_id
+                })
+                .with_tenant(user_id)  # Use Weaviate's multi-tenancy
+                .do()
+            )
+            
+            chunks = result.get("data", {}).get("Get", {}).get("TenantChunk", [])
+            
+            # Map chunk_id to embedding
+            embeddings = {}
+            for chunk in chunks:
+                chunk_id = chunk.get("chunk_id")
+                embedding = chunk.get("embedding")
+                if chunk_id and embedding:
+                    embeddings[chunk_id] = embedding
+            
+            return embeddings
+        except Exception as e:
+            logger.error(f"Error getting chunk embeddings: {e}")
+            return {} 

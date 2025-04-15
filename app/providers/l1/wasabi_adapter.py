@@ -637,4 +637,68 @@ class WasabiStorageAdapter:
             return backup_id
         except Exception as e:
             logger.error(f"Error creating backup in Wasabi: {e}")
-            raise 
+            raise
+    
+    def get_document(self, user_id: str, document_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve L0-processed document data from Wasabi storage.
+        
+        Args:
+            user_id: The user ID
+            document_id: The document ID
+            
+        Returns:
+            Document data with title, summary, keywords or None if not found
+        """
+        try:
+            # Prepare the result document data
+            document_data = {
+                "id": document_id,
+                "user_id": user_id
+            }
+            
+            # Get document insight from metadata folder
+            insight_path = f"tenant/{user_id}/metadata/{document_id}/insight.json"
+            insight_data = self.get_json(insight_path)
+            
+            if insight_data:
+                document_data.update({
+                    "title": insight_data.get("title", ""),
+                    "insight": insight_data
+                })
+            
+            # Get document summary separately
+            summary_path = f"tenant/{user_id}/metadata/{document_id}/summary.json"
+            summary_data = self.get_json(summary_path)
+            
+            if summary_data:
+                document_data.update({
+                    "summary": summary_data.get("summary", {}),
+                    "keywords": summary_data.get("keywords", [])
+                })
+            
+            # Try to get the raw content if needed (may be large)
+            try:
+                # List raw files for this document
+                raw_objects = self.blob_store.list_objects(prefix=f"tenant/{user_id}/raw/{document_id}_")
+                
+                if raw_objects and len(raw_objects) > 0:
+                    # Get filename from the first matching object
+                    raw_path = raw_objects[0].get("Key", "")
+                    document_data["raw_s3_path"] = raw_path
+                    
+                    # Don't load full content by default as it could be large
+                    # Client code should request it separately if needed
+                    document_data["has_raw_content"] = True
+            except Exception as e:
+                self.logger.warning(f"Error listing raw objects for document {document_id}: {e}")
+                document_data["has_raw_content"] = False
+            
+            if insight_data or summary_data or document_data.get("has_raw_content", False):
+                return document_data
+                
+            self.logger.warning(f"No document data found for document {document_id} for user {user_id}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error retrieving document from Wasabi: {e}")
+            return None 

@@ -8,6 +8,7 @@ generators and manages data flow between components.
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+import numpy as np
 
 from app.models.l1.generation_result import L1GenerationResult
 from app.models.l1.bio import Bio
@@ -61,6 +62,15 @@ class L1Manager:
         self.wasabi_adapter = wasabi_adapter or WasabiStorageAdapter()
         self.weaviate_adapter = weaviate_adapter or WeaviateAdapter()
         self.l1_generator = l1_generator or L1Generator()
+        
+        # Initialize additional generator components
+        self.topics_generator = self.l1_generator
+        self.shade_generator = self.l1_generator
+        self.shade_merger = self.l1_generator
+        self.biography_generator = self.l1_generator
+        
+        # Set up logger
+        self.logger = logging.getLogger(__name__)
     
     def generate_l1_from_l0(self, user_id: str) -> L1GenerationResult:
         """
@@ -70,112 +80,106 @@ class L1Manager:
             user_id: The user ID to generate L1 data for
             
         Returns:
-            L1GenerationResult containing the generated data and status
+            L1GenerationResult: The generated L1 data or None if there was an error
         """
+        self.logger.info(f"Starting L1 generation for user {user_id}")
+        
         try:
-            # 1. Create a new version record
-            latest_version = self.postgres_adapter.get_latest_version(user_id)
-            new_version = (latest_version or 0) + 1
-            version_record = self.postgres_adapter.create_version(user_id, new_version)
-            
-            # 2. Extract notes and memories from L0
+            # 1. Extract notes and memories from L0 data
             notes_list, memory_list = self._extract_notes_from_l0(user_id)
             
-            if not notes_list or len(notes_list) == 0:
-                error_msg = "No valid documents found for processing"
-                logger.error(error_msg)
-                self.postgres_adapter.update_version_status(
-                    user_id, new_version, "failed", error_msg
-                )
-                return L1GenerationResult.failure(error_msg)
+            if not notes_list or not memory_list:
+                self.logger.error(f"No valid documents found for processing for user {user_id}")
+                return None
+                
+            # 2. Generate L1 data
             
-            # 3. Generate L1 data
-            try:
-                # 3.1 Generate topics and clusters
-                clusters = self.l1_generator.gen_topics_for_shades(
-                    user_id=user_id,
-                    old_cluster_list=[],
-                    old_outlier_memory_list=[],
-                    new_memory_list=memory_list
-                )
-                logger.info(f"Generated clusters: {bool(clusters)}")
-                
-                # 3.2 Generate chunk topics
-                chunk_topics = self.l1_generator.generate_topics(notes_list)
-                logger.info(f"Generated chunk topics: {bool(chunk_topics)}")
-                
-                # 3.3 Generate shades for each cluster and merge them
-                shades = []
-                if clusters and "clusterList" in clusters:
-                    for cluster in clusters.get("clusterList", []):
-                        cluster_memory_ids = [
-                            str(m.get("memoryId")) for m in cluster.get("memoryList", [])
-                        ]
-                        logger.info(
-                            f"Processing cluster with {len(cluster_memory_ids)} memories"
+            # 2.1 Generate topics
+            self.logger.info("Generating clusters...")
+            clusters = self.topics_generator.generate_topics_for_shades(
+                user_id=user_id,
+                old_cluster_list=[], 
+                old_outlier_memory_list=[], 
+                new_memory_list=memory_list
+            )
+            self.logger.info(f"Generated clusters: {bool(clusters)}")
+            
+            # 2.2 Generate chunk topics
+            self.logger.info("Generating chunk topics...")
+            chunk_topics = self.topics_generator.generate_topics(user_id=user_id, notes=notes_list)
+            self.logger.info(f"Generated chunk topics: {bool(chunk_topics)}")
+            self.logger.debug(f"Chunk topics content: {chunk_topics}")
+            
+            # 2.3 Generate shades for each cluster and merge them
+            shades = []
+            if clusters and "clusterList" in clusters:
+                for cluster in clusters.get("clusterList", []):
+                    cluster_memory_ids = [
+                        str(m.get("memoryId")) for m in cluster.get("memoryList", [])
+                    ]
+                    self.logger.info(f"Processing cluster with {len(cluster_memory_ids)} memories")
+                    
+                    cluster_notes = [
+                        note for note in notes_list if str(note.id) in cluster_memory_ids
+                    ]
+                    
+                    if cluster_notes:
+                        self.logger.info(f"Generating shade for cluster with {len(cluster_notes)} notes")
+                        shade = self.shade_generator.generate_shade(
+                            user_id=user_id,
+                            old_shades=[],
+                            notes=cluster_notes,
+                            todos=[]  # Empty for now
                         )
                         
-                        cluster_notes = [
-                            note for note in notes_list if str(note.id) in cluster_memory_ids
-                        ]
-                        if cluster_notes:
-                            shade = self.l1_generator.gen_shade_for_cluster(
-                                user_id=user_id,
-                                old_shades=[],
-                                cluster_notes=cluster_notes,
-                                memory_list=[]
-                            )
-                            if shade:
-                                shades.append(shade)
-                                logger.info(f"Generated shade: {shade.name if hasattr(shade, 'name') else 'Unknown'}")
-                
-                logger.info(f"Generated {len(shades)} shades")
-                merged_shades = self.l1_generator.merge_shades(user_id, shades)
-                logger.info(f"Merged shades success: {merged_shades.success}")
-                logger.info(
-                    f"Number of merged shades: {len(merged_shades.merge_shade_list) if merged_shades.success else 0}"
-                )
-                
-                # 3.4 Generate global biography
-                bio = self.l1_generator.gen_global_biography(
-                    user_id=user_id,
-                    old_profile=Bio(
-                        shades_list=merged_shades.merge_shade_list if merged_shades.success else []
-                    ),
-                    cluster_list=clusters.get("clusterList", []),
-                )
-                logger.info(f"Generated global biography")
-                
-                # 4. Store the results in PostgreSQL/Wasabi/Weaviate
-                self._store_l1_data(user_id, new_version, bio, clusters, chunk_topics)
-                
-                # 5. Update version status to completed
-                self.postgres_adapter.update_version_status(
-                    user_id, new_version, "completed"
-                )
-                
-                # 6. Build result object with updated structure
-                result = L1GenerationResult.success(
-                    bio=bio, 
-                    clusters=clusters, 
-                    chunk_topics=chunk_topics
-                )
-                
-                logger.info("L1 generation completed successfully")
-                return result
-                
-            except Exception as e:
-                error_msg = f"Error in L1 generation: {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                self.postgres_adapter.update_version_status(
-                    user_id, new_version, "failed", error_msg
-                )
-                return L1GenerationResult.failure(error_msg)
-                
+                        if shade:
+                            shades.append(shade)
+                            self.logger.info(f"Generated shade: {shade.name if hasattr(shade, 'name') else 'Unknown'}")
+            
+            self.logger.info(f"Generated {len(shades)} shades")
+            
+            # 2.4 Merge similar shades
+            merged_shades_result = self.shade_merger.merge_shades(user_id=user_id, shades=shades)
+            self.logger.info(f"Merged shades success: {merged_shades_result.success}")
+            self.logger.info(
+                f"Number of merged shades: {len(merged_shades_result.merge_shade_list) if merged_shades_result.success else 0}"
+            )
+            
+            # 2.5 Generate global biography
+            self.logger.info("Generating global biography...")
+            bio = self.biography_generator.generate_global_biography(
+                user_id=user_id,
+                old_profile=Bio(
+                    shades_list=merged_shades_result.merge_shade_list
+                    if merged_shades_result.success
+                    else []
+                ),
+                cluster_list=clusters.get("clusterList", []),
+            )
+            self.logger.info(f"Generated global biography successfully")
+            
+            # 3. Store L1 data
+            self._store_l1_data(
+                user_id=user_id,
+                bio=bio,
+                clusters=clusters,
+                chunk_topics=chunk_topics,
+                shades=merged_shades_result.merge_shade_list if merged_shades_result.success else []
+            )
+            
+            # 4. Build result object
+            result = L1GenerationResult(
+                bio=bio, 
+                clusters=clusters, 
+                chunk_topics=chunk_topics
+            )
+            
+            self.logger.info(f"L1 generation completed successfully for user {user_id}")
+            return result
+            
         except Exception as e:
-            error_msg = f"Error in L1 generation process: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            return L1GenerationResult.failure(error_msg)
+            self.logger.error(f"Error in L1 generation for user {user_id}: {str(e)}", exc_info=True)
+            raise
     
     def _extract_notes_from_l0(self, user_id: str) -> Tuple[List[Note], List[Dict[str, Any]]]:
         """
@@ -187,33 +191,215 @@ class L1Manager:
         Returns:
             Tuple of (notes_list, memory_list)
         """
-        # TODO: Implement extracting Notes from L0 documents
-        # This will need to query documents with L0 data from PostgreSQL
-        # and transform them into Note objects
+        notes_list = []
+        memory_list = []
         
-        # Placeholder implementation
-        return [], []
+        # Get documents with L0 data from PostgreSQL
+        documents = self.postgres_adapter.get_documents_with_l0(user_id)
+        self.logger.info(f"Found {len(documents)} documents with L0 data for user {user_id}")
+        
+        for doc in documents:
+            doc_id = doc.id
+            
+            # Get document embedding from Weaviate
+            doc_embedding = self.weaviate_adapter.get_document_embedding(user_id, doc_id)
+            
+            # Get document chunks from Weaviate
+            chunks = self.weaviate_adapter.get_document_chunks(user_id, doc_id)
+            
+            # Get chunk embeddings from Weaviate
+            all_chunk_embeddings = self.weaviate_adapter.get_chunk_embeddings_by_document(user_id, doc_id)
+            
+            # Skip documents with missing data
+            if not doc_embedding:
+                self.logger.warning(f"Document {doc_id} missing document embedding")
+                continue
+            if not chunks:
+                self.logger.warning(f"Document {doc_id} missing chunks")
+                continue
+            if not all_chunk_embeddings:
+                self.logger.warning(f"Document {doc_id} missing chunk embeddings")
+                continue
+            
+            # Ensure create_time is in string format
+            create_time = doc.create_time
+            if isinstance(create_time, datetime):
+                create_time = create_time.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Get document insight and summary from Wasabi
+            document_data = self.wasabi_adapter.get_document(user_id, doc_id)
+            insight_data = document_data.get("insight", {}) or {}
+            summary_data = document_data.get("summary", {}) or {}
+            
+            # Build Note object
+            note = Note(
+                id=doc_id,
+                content=document_data.get("raw_content", ""),
+                create_time=create_time,
+                embedding=np.array(doc_embedding),
+                chunks=[
+                    Chunk(
+                        id=chunk.id,
+                        document_id=doc_id,
+                        content=chunk.content,
+                        embedding=np.array(all_chunk_embeddings.get(chunk.id))
+                        if all_chunk_embeddings.get(chunk.id)
+                        else None,
+                        tags=getattr(chunk, "tags", None),
+                        topic=getattr(chunk, "topic", None)
+                    )
+                    for chunk in chunks
+                    if all_chunk_embeddings.get(chunk.id)
+                ],
+                title=insight_data.get("title", ""),
+                summary=summary_data.get("summary", ""),
+                insight=insight_data.get("insight", ""),
+                tags=summary_data.get("keywords", [])
+            )
+            notes_list.append(note)
+            
+            # Add to memory list for clustering
+            memory_list.append({
+                "memoryId": str(doc_id),
+                "embedding": doc_embedding
+            })
+        
+        self.logger.info(f"Extracted {len(notes_list)} notes for user {user_id}")
+        return notes_list, memory_list
     
     def _store_l1_data(
         self,
         user_id: str,
-        version: int,
         bio: Bio,
         clusters: Dict[str, Any],
-        chunk_topics: Dict[str, Dict]  # Updated from List[Dict[str, Any]]
+        chunk_topics: Dict[str, Dict],
+        shades: List[Dict[str, Any]]
     ) -> None:
         """
         Store L1 data in PostgreSQL, Wasabi, and Weaviate.
         
         Args:
             user_id: User ID
-            version: Version number
             bio: Biography data
             clusters: Clusters data
             chunk_topics: Chunk topics data (now a Dict[str, Dict])
+            shades: Shades data
         """
-        # TODO: Implement storing L1 data in PostgreSQL, Wasabi, and Weaviate
-        pass
+        try:
+            # 1. Create a new version record for tracking
+            latest_version = self.postgres_adapter.get_latest_version(user_id)
+            new_version = (latest_version or 0) + 1
+            self.postgres_adapter.create_version(user_id, new_version, "processing")
+            
+            # 2. Store topics/clusters in Weaviate and PostgreSQL
+            if clusters and "clusterList" in clusters:
+                for cluster in clusters.get("clusterList", []):
+                    # Get cluster data
+                    cluster_id = cluster.get("clusterId")
+                    cluster_name = cluster.get("clusterName")
+                    center_embedding = cluster.get("centerEmbed")
+                    document_ids = [
+                        str(m.get("memoryId")) for m in cluster.get("memoryList", [])
+                    ]
+                    
+                    # Store in Weaviate (vector DB)
+                    self.weaviate_adapter.store_cluster(
+                        user_id=user_id,
+                        cluster_id=cluster_id,
+                        name=cluster_name,
+                        center_embedding=center_embedding,
+                        version=new_version
+                    )
+                    
+                    # Store in PostgreSQL (metadata DB)
+                    self.postgres_adapter.store_cluster(
+                        user_id=user_id,
+                        cluster_id=cluster_id,
+                        name=cluster_name,
+                        document_ids=document_ids,
+                        version=new_version
+                    )
+            
+            # 3. Store chunk topics in PostgreSQL
+            if chunk_topics:
+                self.postgres_adapter.store_chunk_topics(
+                    user_id=user_id,
+                    chunk_topics=chunk_topics,
+                    version=new_version
+                )
+            
+            # 4. Store shades in PostgreSQL and Wasabi
+            if shades:
+                for shade in shades:
+                    shade_id = shade.get("id")
+                    # Store in Wasabi (object storage)
+                    self.wasabi_adapter.store_shade(
+                        user_id=user_id,
+                        shade_id=shade_id,
+                        shade_data=shade,
+                        version=new_version
+                    )
+                    
+                    # Store metadata in PostgreSQL
+                    self.postgres_adapter.store_shade(
+                        user_id=user_id,
+                        shade_id=shade_id,
+                        name=shade.get("name"),
+                        summary=shade.get("summary"),
+                        confidence=shade.get("confidence"),
+                        source_clusters=shade.get("source_clusters", []),
+                        version=new_version
+                    )
+            
+            # 5. Store biography in PostgreSQL and Wasabi
+            # Store the global biography in Wasabi (full content)
+            bio_id = f"global_{new_version}"
+            self.wasabi_adapter.store_biography(
+                user_id=user_id,
+                bio_id=bio_id,
+                bio_data={
+                    "content_first_view": bio.content_first_view,
+                    "content_second_view": bio.content_second_view,
+                    "content_third_view": bio.content_third_view,
+                    "summary_first_view": bio.summary_first_view,
+                    "summary_second_view": bio.summary_second_view,
+                    "summary_third_view": bio.summary_third_view
+                },
+                version=new_version
+            )
+            
+            # Store global biography metadata in PostgreSQL
+            self.postgres_adapter.store_global_biography(
+                user_id=user_id,
+                content=bio.content_second_view,
+                content_third_view=bio.content_third_view,
+                summary=bio.summary_second_view,
+                summary_third_view=bio.summary_third_view,
+                version=new_version
+            )
+            
+            # 6. Update version status to completed
+            self.postgres_adapter.update_version_status(
+                user_id=user_id,
+                version=new_version,
+                status="completed"
+            )
+            
+            self.logger.info(f"Successfully stored L1 data for user {user_id}, version {new_version}")
+            
+        except Exception as e:
+            self.logger.error(f"Error storing L1 data for user {user_id}: {str(e)}", exc_info=True)
+            
+            # Update version status to failed if created
+            if new_version:
+                self.postgres_adapter.update_version_status(
+                    user_id=user_id,
+                    version=new_version,
+                    status="failed",
+                    error_message=str(e)
+                )
+            
+            raise
     
     def get_latest_global_bio(self, user_id: str) -> Optional[Bio]:
         """

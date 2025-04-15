@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy import text, select, and_
 from sqlalchemy.orm import Session
 
-from app.providers.rel_db import RelationalDB
+from app.providers.rel_db import RelationalDB, Document
 from app.models.l1.db_models import (
     L1Topic, L1Cluster, L1ClusterDocument, L1Shade, 
     L1ShadeCluster, L1GlobalBiography, L1StatusBiography,
@@ -887,4 +887,31 @@ class PostgresAdapter:
         db_bio = self.get_latest_status_biography(user_id)
         if db_bio:
             return self.convert_to_bio_model(db_bio)
-        return None 
+        return None
+    
+    def get_documents_with_l0(self, user_id: str) -> List[Any]:
+        """
+        Get all documents with L0 data for a user.
+        
+        Args:
+            user_id: The user ID
+            
+        Returns:
+            List of document objects with L0 data
+        """
+        session = self.get_db_session()
+        try:
+            # Query documents that have been processed and have insight/summary data
+            documents = session.query(Document).filter(
+                and_(
+                    Document.user_id == user_id,
+                    Document.processed == True,
+                    Document.chunk_count > 0
+                )
+            ).all()
+            return documents
+        except Exception as e:
+            logger.error(f"Error getting documents with L0: {e}")
+            return []
+        finally:
+            self.close_db_session(session) 
