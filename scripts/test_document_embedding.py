@@ -65,6 +65,9 @@ def test_document_embedding_pipeline():
     
     if not documents:
         logger.error("No documents found! Please ensure documents are processed.")
+        # Close connections before returning
+        rel_db.close_db_session(session)
+        vector_db.close()
         return False
     
     # Process each document
@@ -126,8 +129,10 @@ def test_document_embedding_pipeline():
         success_count += 1
         logger.info(f"✅ All tests passed for document {doc_id}")
     
-    # Close session
+    # Close connections
     rel_db.close_db_session(session)
+    vector_db.close()
+    logger.info("Closed database and vector database connections")
     
     # Overall results
     if success_count == 0:
