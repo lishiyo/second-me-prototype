@@ -115,12 +115,35 @@ def sample_notes():
 
 
 def test_init():
-    """Test L1Manager initialization."""
-    manager = L1Manager()
-    assert hasattr(manager, 'postgres_adapter')
-    assert hasattr(manager, 'wasabi_adapter')
-    assert hasattr(manager, 'weaviate_adapter')
-    assert hasattr(manager, 'l1_generator')
+    """Test L1Manager initialization with default dependencies."""
+    # Patch dependencies where they are imported by L1Manager
+    with patch('app.processors.l1.l1_manager.PostgresAdapter') as mock_pg, \
+         patch('app.processors.l1.l1_manager.WasabiStorageAdapter') as mock_wasabi, \
+         patch('app.processors.l1.l1_manager.WeaviateAdapter') as mock_weaviate, \
+         patch('app.providers.vector_db.VectorDB') as mock_vector_db, \
+         patch('app.processors.l1.l1_manager.L1Generator') as mock_gen:
+
+        # Instantiate the manager - should call the mock classes
+        manager = L1Manager()
+
+        # Assert that the mock classes were called (instantiated)
+        mock_pg.assert_called_once()
+        mock_wasabi.assert_called_once()
+        mock_weaviate.assert_called_once()
+        mock_gen.assert_called_once()
+        # No need to assert mock_vector_db as it's not directly called by L1Manager
+
+        # Assert that the manager has the instances from the mocks
+        assert manager.postgres_adapter == mock_pg.return_value
+        assert manager.wasabi_adapter == mock_wasabi.return_value
+        assert manager.weaviate_adapter == mock_weaviate.return_value
+        assert manager.l1_generator == mock_gen.return_value
+
+        # Keep original assertions too
+        assert hasattr(manager, 'postgres_adapter')
+        assert hasattr(manager, 'wasabi_adapter')
+        assert hasattr(manager, 'weaviate_adapter')
+        assert hasattr(manager, 'l1_generator')
 
 
 @patch('app.processors.l1.l1_manager.L1Manager._store_l1_data')

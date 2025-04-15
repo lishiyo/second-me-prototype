@@ -37,9 +37,18 @@ def postgres_adapter(mock_rel_db):
 
 
 def test_init():
-    """Test PostgresAdapter initialization."""
-    adapter = PostgresAdapter()
-    assert hasattr(adapter, 'rel_db')
+    """Test PostgresAdapter initialization without providing a RelationalDB instance."""
+    # Patch RelationalDB where it's imported by PostgresAdapter
+    with patch('app.providers.l1.postgres_adapter.RelationalDB') as mock_rel_db_class:
+        # Create the adapter - this should now call the mock class
+        adapter = PostgresAdapter()
+
+        # Verify that the mock class was instantiated
+        mock_rel_db_class.assert_called_once()
+
+        # Verify that the adapter's rel_db attribute is the instance created by the mock class
+        assert adapter.rel_db == mock_rel_db_class.return_value
+        assert hasattr(adapter, 'rel_db') # Keep original assertion too
 
 
 def test_get_db_session(postgres_adapter, mock_rel_db):
