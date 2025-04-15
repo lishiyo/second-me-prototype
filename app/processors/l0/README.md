@@ -68,6 +68,22 @@ psql -h 127.0.0.1 -U postgres -d second-me-prototype
 SELECT * FROM documents ORDER BY uploaded_at DESC;
 ```
 
+To clear out the ENTIRE database for user 1:
+1. Wasabi - clear out all buckets for 1
+2. Weaviate - clear out TenantChunk and Document collections
+3. In pqsl (`psql -h 127.0.0.1 -U postgres -d second-me-prototype`), run:
+```sql
+TRUNCATE TABLE users CASCADE;
+TRUNCATE TABLE documents CASCADE;
+```
+4. Finally, re-run your files to process in L0: `python scripts/process_all_data.py`
+5. Check that Wasabi chunks, raw, and metadata are populated
+5. Check that pqsl documents are populated:
+```sql
+SELECT * FROM documents:
+```
+
+
 ## Implementation Details
 
 The implementation is inspired by the approach used in the `lpm_kernel` L0 layer but simplified and adapted for our needs. The key differences are:

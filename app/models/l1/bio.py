@@ -7,6 +7,7 @@ from datetime import datetime
 class Bio:
     """
     Represents a user biography with different perspective views.
+    Similar to the Bio class in lpm_kernel.
     """
     # Identity fields
     id: str = ""
@@ -31,9 +32,71 @@ class Bio:
     # Additional attributes
     confidence: float = 0.0
     shades_list: List[Dict[str, Any]] = field(default_factory=list)
+    attribute_list: List[Dict[str, Any]] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Properties for compatibility with lpm_kernel Bio class
+    @property
+    def contentThirdView(self) -> str:
+        """Compatibility with lpm_kernel: alias for content_third_view"""
+        return self.content_third_view
+        
+    @contentThirdView.setter
+    def contentThirdView(self, value: str):
+        """Compatibility with lpm_kernel: alias for content_third_view"""
+        self.content_third_view = value
+        
+    @property
+    def content(self) -> str:
+        """Compatibility with lpm_kernel: alias for content_second_view"""
+        return self.content_second_view
+        
+    @content.setter
+    def content(self, value: str):
+        """Compatibility with lpm_kernel: alias for content_second_view"""
+        self.content_second_view = value
+        
+    @property
+    def summaryThirdView(self) -> str:
+        """Compatibility with lpm_kernel: alias for summary_third_view"""
+        return self.summary_third_view
+        
+    @summaryThirdView.setter
+    def summaryThirdView(self, value: str):
+        """Compatibility with lpm_kernel: alias for summary_third_view"""
+        self.summary_third_view = value
+        
+    @property
+    def summary(self) -> str:
+        """Compatibility with lpm_kernel: alias for summary_second_view"""
+        return self.summary_second_view
+        
+    @summary.setter
+    def summary(self, value: str):
+        """Compatibility with lpm_kernel: alias for summary_second_view"""
+        self.summary_second_view = value
+        
+    @property
+    def attributeList(self) -> List[Dict[str, Any]]:
+        """Compatibility with lpm_kernel: alias for attribute_list"""
+        return self.attribute_list
+        
+    @attributeList.setter
+    def attributeList(self, value: List[Dict[str, Any]]):
+        """Compatibility with lpm_kernel: alias for attribute_list"""
+        self.attribute_list = value
+        
+    @property
+    def shadesList(self) -> List[Dict[str, Any]]:
+        """Compatibility with lpm_kernel: alias for shades_list"""
+        return self.shades_list
+        
+    @shadesList.setter
+    def shadesList(self, value: List[Dict[str, Any]]):
+        """Compatibility with lpm_kernel: alias for shades_list"""
+        self.shades_list = value
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation"""
@@ -50,6 +113,7 @@ class Bio:
             "health_status": self.health_status,
             "confidence": self.confidence,
             "shades_list": self.shades_list,
+            "attribute_list": self.attribute_list,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "metadata": self.metadata
@@ -79,6 +143,7 @@ class Bio:
             health_status=data.get("health_status", ""),
             confidence=data.get("confidence", 0.0),
             shades_list=data.get("shades_list", []),
+            attribute_list=data.get("attribute_list", []),
             created_at=created_at or datetime.now(),
             updated_at=updated_at or datetime.now(),
             metadata=data.get("metadata", {})
@@ -97,6 +162,22 @@ Summary (Third Person):
     def complete_content(self) -> str:
         """Get the complete content with summary"""
         return f"{self.summary_third_view}\n\n{self.content_third_view}"
+    
+    # Add methods for compatibility with lpm_kernel
+    def is_raw_bio(self) -> bool:
+        """Check if this is a raw bio (minimal structure)"""
+        return not bool(self.content_second_view or self.content_third_view)
+    
+    def to_json(self) -> Dict[str, Any]:
+        """Convert to JSON format for compatibility with lpm_kernel"""
+        return {
+            "contentThirdView": self.content_third_view,
+            "content": self.content_second_view,  
+            "summaryThirdView": self.summary_third_view,
+            "summary": self.summary_second_view,
+            "attributeList": self.attribute_list,
+            "shadesList": self.shades_list
+        }
     
     def shift_perspective_to_first(self) -> "Bio":
         """Shift perspective to first person"""

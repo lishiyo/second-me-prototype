@@ -44,6 +44,13 @@ class Chunk:
             chunk_index=data.get("chunk_index", 0),
             metadata=data.get("metadata", {})
         )
+    
+    # For compatibility with lpm_kernel Chunk class
+    def squeeze(self):
+        """For compatibility with numpy arrays in lpm_kernel"""
+        if self.embedding is not None and hasattr(self.embedding, 'squeeze'):
+            self.embedding = self.embedding.squeeze()
+        return self.embedding
 
 
 @dataclass
@@ -63,6 +70,39 @@ class Note:
     tags: List[str] = field(default_factory=list)
     memory_type: str = "TEXT"
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Properties to maintain compatibility with lpm_kernel Note class
+    @property
+    def noteId(self) -> str:
+        """Compatibility with lpm_kernel: alias for id"""
+        return self.id
+        
+    @noteId.setter
+    def noteId(self, value: str):
+        """Compatibility with lpm_kernel: alias for id"""
+        self.id = value
+        
+    @property
+    def createTime(self) -> str:
+        """Compatibility with lpm_kernel: alias for create_time"""
+        if isinstance(self.create_time, datetime):
+            return self.create_time.strftime("%Y-%m-%d %H:%M:%S")
+        return self.create_time
+        
+    @createTime.setter
+    def createTime(self, value: str):
+        """Compatibility with lpm_kernel: alias for create_time"""
+        self.create_time = value
+        
+    @property
+    def memoryType(self) -> str:
+        """Compatibility with lpm_kernel: alias for memory_type"""
+        return self.memory_type
+        
+    @memoryType.setter
+    def memoryType(self, value: str):
+        """Compatibility with lpm_kernel: alias for memory_type"""
+        self.memory_type = value
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation"""
@@ -84,6 +124,34 @@ class Note:
             "memory_type": self.memory_type,
             "metadata": self.metadata
         }
+        
+    # Add a to_json method for compatibility with lpm_kernel Note class
+    def to_json(self) -> Dict[str, Any]:
+        """
+        Convert the note to a JSON-serializable dictionary.
+        Compatibility with lpm_kernel Note class.
+        """
+        if hasattr(self, "processed"):
+            return {
+                "id": self.id,
+                "insight": self.insight,
+                "summary": self.summary,
+                "memory_type": self.memory_type,
+                "create_time": self.createTime,
+                "title": self.title,
+                "content": self.content,
+                "processed": self.processed
+            }
+        else:
+            return {
+                "id": self.id,
+                "insight": self.insight,
+                "summary": self.summary,
+                "memory_type": self.memory_type,
+                "create_time": self.createTime,
+                "title": self.title,
+                "content": self.content
+            }
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Note":

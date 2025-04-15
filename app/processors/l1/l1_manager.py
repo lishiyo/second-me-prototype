@@ -28,12 +28,13 @@ logger = logging.getLogger(__name__)
 
 class L1Manager:
     """
-    Orchestrates the L1 generation process.
+    Manages the generation and storage of L1 level knowledge representations.
     
-    This class coordinates between different generators (L1Generator, TopicsGenerator,
-    ShadeGenerator, BiographyGenerator) and manages data flow between components.
-    It handles extracting notes from L0, generating topics and clusters,
-    generating shades, merging shades, and generating biographies.
+    This class is designed to be compatible with lpm_kernel's l1_manager.py.
+    The methods and data structures maintain compatibility with the original code,
+    including parameter names and return types to ensure seamless integration.
+    The key methods _extract_notes_from_l0 and generate_l1_from_l0 correspond to
+    extract_notes_from_documents and generate_l1_from_l0 in lpm_kernel respectively.
     
     Attributes:
         postgres_adapter: Adapter for PostgreSQL database operations
@@ -114,11 +115,13 @@ class L1Manager:
             shades = []
             if clusters and "clusterList" in clusters:
                 for cluster in clusters.get("clusterList", []):
+                    # Use memoryId for compatibility with lpm_kernel
                     cluster_memory_ids = [
                         str(m.get("memoryId")) for m in cluster.get("memoryList", [])
                     ]
                     self.logger.info(f"Processing cluster with {len(cluster_memory_ids)} memories")
                     
+                    # Find notes with matching IDs, using Note.id or Note.noteId
                     cluster_notes = [
                         note for note in notes_list if str(note.id) in cluster_memory_ids
                     ]
@@ -147,6 +150,7 @@ class L1Manager:
             
             # 2.5 Generate global biography
             self.logger.info("Generating global biography...")
+            # Use shades_list for compatibility with lpm_kernel Bio class
             bio = self.biography_generator.generate_global_biography(
                 user_id=user_id,
                 old_profile=Bio(
@@ -231,11 +235,11 @@ class L1Manager:
             insight_data = document_data.get("insight", {}) or {}
             summary_data = document_data.get("summary", {}) or {}
             
-            # Build Note object
+            # Build Note object with parameter names matching lpm_kernel
             note = Note(
-                id=doc_id,
+                id=doc_id,  # This field will be mapped to 'id' in the Note object
                 content=document_data.get("raw_content", ""),
-                create_time=create_time,
+                create_time=create_time,  # This will be mapped to 'create_time'
                 embedding=np.array(doc_embedding),
                 chunks=[
                     Chunk(
@@ -254,11 +258,12 @@ class L1Manager:
                 title=insight_data.get("title", ""),
                 summary=summary_data.get("summary", ""),
                 insight=insight_data.get("insight", ""),
-                tags=summary_data.get("keywords", [])
+                tags=summary_data.get("keywords", []),
+                memory_type="TEXT"  # This will be mapped to 'memory_type'
             )
             notes_list.append(note)
             
-            # Add to memory list for clustering
+            # Add to memory list for clustering - matching lpm_kernel format
             memory_list.append({
                 "memoryId": str(doc_id),
                 "embedding": doc_embedding
