@@ -17,6 +17,7 @@ class VectorDB:
     """
     
     DEFAULT_CLASS_NAME = "TenantChunk"
+    DOCUMENT_CLASS_NAME = "Document"
     
     def __init__(self, 
                  url: Optional[str] = None, 
@@ -46,76 +47,142 @@ class VectorDB:
             }
         )
         
-        # Ensure the class schema exists
-        self._ensure_schema_exists()
+        # Ensure the class schemas exist
+        self._ensure_schemas_exist()
     
-    def _ensure_schema_exists(self) -> None:
+    def _ensure_schemas_exist(self) -> None:
         """
-        Ensure the required Weaviate class schema exists, create it if it doesn't.
+        Ensure the required Weaviate class schemas exist, create them if they don't.
         """
         try:
-            # Check if the collection already exists
+            # Check which collections exist
             collections = self.client.collections.list_all()
             collection_names = collections  # collections is already a list of names in v4
             
+            # Create TenantChunk schema if needed
             if self.DEFAULT_CLASS_NAME not in collection_names:
-                logger.info(f"Creating collection schema {self.DEFAULT_CLASS_NAME}")
+                self._create_chunk_schema()
                 
-                # Create the collection with proper configuration
-                self.client.collections.create(
-                    name=self.DEFAULT_CLASS_NAME,
-                    description="A chunk of text from a document with tenant isolation",
-                    # Use pre-computed embeddings from OpenAI rather than Weaviate's vectorizer
-                    vectorizer_config=Configure.Vectorizer.none(),
-                    # Configure multi-tenancy
-                    multi_tenancy_config=Configure.multi_tenancy(
-                        enabled=True,
-                        auto_tenant_creation=True  # Automatically create tenants when needed
-                    ),
-                    # Define properties
-                    properties=[
-                        Property(
-                            name="document_id",
-                            description="Source document ID",
-                            data_type=DataType.TEXT,
-                            indexing={"filterable": True, "searchable": True},
-                        ),
-                        Property(
-                            name="s3_path",
-                            description="Path to the chunk file in Wasabi S3",
-                            data_type=DataType.TEXT,
-                            indexing={"filterable": True, "searchable": True},
-                        ),
-                        Property(
-                            name="filename",
-                            description="Original filename",
-                            data_type=DataType.TEXT,
-                            indexing={"filterable": True, "searchable": True},
-                        ),
-                        Property(
-                            name="content_type",
-                            description="Content type of the document",
-                            data_type=DataType.TEXT,
-                            indexing={"filterable": True, "searchable": True},
-                        ),
-                        Property(
-                            name="timestamp",
-                            description="Timestamp of chunk creation",
-                            data_type=DataType.DATE,
-                            indexing={"filterable": True, "searchable": True},
-                        ),
-                        Property(
-                            name="chunk_index",
-                            description="Index of chunk in original document",
-                            data_type=DataType.INT,
-                            indexing={"filterable": True, "searchable": True},
-                        ),
-                    ]
-                )
+            # Create Document schema if needed
+            if self.DOCUMENT_CLASS_NAME not in collection_names:
+                self._create_document_schema()
+                
         except Exception as e:
-            logger.error(f"Error creating schema: {e}")
+            logger.error(f"Error creating schemas: {e}")
             raise
             
+    def _create_chunk_schema(self) -> None:
+        """Create the TenantChunk schema for storing chunk-level embeddings."""
+        logger.info(f"Creating collection schema {self.DEFAULT_CLASS_NAME}")
+        
+        # Create the collection with proper configuration
+        self.client.collections.create(
+            name=self.DEFAULT_CLASS_NAME,
+            description="A chunk of text from a document with tenant isolation",
+            # Use pre-computed embeddings from OpenAI rather than Weaviate's vectorizer
+            vectorizer_config=Configure.Vectorizer.none(),
+            # Configure multi-tenancy
+            multi_tenancy_config=Configure.multi_tenancy(
+                enabled=True,
+                auto_tenant_creation=True  # Automatically create tenants when needed
+            ),
+            # Define properties
+            properties=[
+                Property(
+                    name="document_id",
+                    description="Source document ID",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="s3_path",
+                    description="Path to the chunk file in Wasabi S3",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="filename",
+                    description="Original filename",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="content_type",
+                    description="Content type of the document",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="timestamp",
+                    description="Timestamp of chunk creation",
+                    data_type=DataType.DATE,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="chunk_index",
+                    description="Index of chunk in original document",
+                    data_type=DataType.INT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+            ]
+        )
+        
+    def _create_document_schema(self) -> None:
+        """Create the Document schema for storing document-level embeddings."""
+        logger.info(f"Creating collection schema {self.DOCUMENT_CLASS_NAME}")
+        
+        # Create the document collection with proper configuration
+        self.client.collections.create(
+            name=self.DOCUMENT_CLASS_NAME,
+            description="Document-level embedding and metadata with tenant isolation",
+            # Use pre-computed embeddings from OpenAI rather than Weaviate's vectorizer
+            vectorizer_config=Configure.Vectorizer.none(),
+            # Configure multi-tenancy
+            multi_tenancy_config=Configure.multi_tenancy(
+                enabled=True,
+                auto_tenant_creation=True  # Automatically create tenants when needed
+            ),
+            # Define properties
+            properties=[
+                Property(
+                    name="document_id",
+                    description="Source document ID",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="s3_path",
+                    description="Path to the document in Wasabi S3",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="title",
+                    description="Document title",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="filename",
+                    description="Original filename",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="content_type",
+                    description="Content type of the document",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="timestamp",
+                    description="Timestamp of document creation",
+                    data_type=DataType.DATE,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+            ]
+        )
+    
     def generate_consistent_id(self, tenant_id: str, document_id: str, chunk_index: int) -> str:
         """
         Generate a consistent UUID for a chunk based on tenant, document, and chunk index.
@@ -591,4 +658,140 @@ class VectorDB:
         """
         if hasattr(self, 'client') and self.client:
             self.client.close()
-            logger.debug("Weaviate client connection closed") 
+            logger.debug("Weaviate client connection closed")
+
+    def get_document_collection(self):
+        """Get the collection object for the document class"""
+        return self.client.collections.get(self.DOCUMENT_CLASS_NAME)
+    
+    def get_tenant_document_collection(self, tenant_id: str):
+        """Get a tenant-specific document collection object"""
+        collection = self.get_document_collection()
+        return collection.with_tenant(tenant=tenant_id)
+    
+    def add_document(self, 
+                   tenant_id: str,
+                   document_id: str,
+                   s3_path: str,
+                   embedding: List[float],
+                   metadata: Dict[str, Any]) -> str:
+        """
+        Add a document-level embedding to the vector store.
+        
+        Args:
+            tenant_id: Tenant/user ID
+            document_id: Source document ID
+            s3_path: Path to the document in Wasabi S3
+            embedding: Pre-computed embedding vector for the entire document
+            metadata: Additional metadata including title, filename, content_type, etc.
+            
+        Returns:
+            UUID of the added object
+        """
+        try:
+            # Generate a consistent UUID for this document
+            obj_id = self.generate_consistent_document_id(tenant_id, document_id)
+            
+            # Prepare the object data
+            properties = {
+                "document_id": document_id,
+                "s3_path": s3_path,
+                "title": metadata.get("title", ""),
+                "filename": metadata.get("filename", ""),
+                "content_type": metadata.get("content_type", ""),
+                "timestamp": metadata.get("timestamp", "")
+            }
+            
+            # Get the tenant-specific document collection
+            tenant_collection = self.get_tenant_document_collection(tenant_id)
+            
+            # Add the object using the tenant-specific collection with pre-computed embedding
+            tenant_collection.data.insert(
+                properties=properties,
+                uuid=obj_id,
+                vector=embedding
+            )
+                
+            logger.info(f"Added document {document_id} to vector DB with UUID {obj_id}")
+            return obj_id
+        except Exception as e:
+            logger.error(f"Error adding document {document_id}: {e}")
+            raise
+    
+    def generate_consistent_document_id(self, tenant_id: str, document_id: str) -> str:
+        """
+        Generate a consistent UUID for a document based on tenant and document ID.
+        
+        Args:
+            tenant_id: Tenant/user ID
+            document_id: Document ID
+            
+        Returns:
+            UUID string
+        """
+        namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # UUID namespace
+        name = f"{tenant_id}:{document_id}:document"
+        return str(uuid.uuid5(namespace, name))
+    
+    def get_document_embedding(self, tenant_id: str, document_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a document-level embedding from the vector store.
+        
+        Args:
+            tenant_id: Tenant/user ID
+            document_id: Document ID
+            
+        Returns:
+            Dictionary with document properties and embedding, or None if not found
+        """
+        try:
+            # Generate the consistent document UUID
+            obj_id = self.generate_consistent_document_id(tenant_id, document_id)
+            
+            # Get the tenant-specific document collection
+            tenant_collection = self.get_tenant_document_collection(tenant_id)
+            
+            # Get the object with its vector
+            response = tenant_collection.query.fetch_object_by_id(
+                uuid=obj_id,
+                include_vector=True
+            )
+            
+            if response:
+                # Extract the properties and vector
+                return {
+                    "document_id": document_id,
+                    "properties": response.properties,
+                    "embedding": response.vector
+                }
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error getting document embedding for {document_id}: {e}")
+            return None
+    
+    def delete_document(self, tenant_id: str, document_id: str) -> bool:
+        """
+        Delete a document-level embedding from the vector store.
+        
+        Args:
+            tenant_id: Tenant/user ID
+            document_id: Document ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Generate the consistent document UUID
+            obj_id = self.generate_consistent_document_id(tenant_id, document_id)
+            
+            # Get the tenant-specific document collection
+            tenant_collection = self.get_tenant_document_collection(tenant_id)
+            
+            # Delete the object
+            tenant_collection.data.delete_by_id(uuid=obj_id)
+            logger.info(f"Deleted document {document_id} from vector DB")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting document {document_id}: {e}")
+            return False 

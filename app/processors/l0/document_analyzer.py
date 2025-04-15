@@ -40,18 +40,30 @@ class DocumentInsightGenerator:
         self.max_tokens = max_tokens
     
     @retry(max_retries=2, error_types=(openai.RateLimitError, openai.APITimeoutError))
-    def generate_insight(self, content: str, filename: str = "") -> DocumentInsight:
+    def generate_insight(self, content: Any, filename: str = "") -> DocumentInsight:
         """
         Generate deep insight from document content.
         
         Args:
-            content: Document content text
+            content: Document content (can be string or bytes)
             filename: Original filename (optional)
             
         Returns:
             DocumentInsight object with title and detailed insight
         """
         logger.info(f"Generating deep insight for document: {filename}")
+        
+        # Ensure content is a string
+        if isinstance(content, bytes):
+            try:
+                content = content.decode('utf-8')
+                logger.info(f"Decoded bytes content to string (length: {len(content)})")
+            except UnicodeDecodeError:
+                content = content.decode('utf-8', errors='replace')
+                logger.warning("Content had to be decoded with 'replace' error handling - some characters may be incorrect")
+        elif not isinstance(content, str):
+            content = str(content)
+            logger.warning(f"Content was converted from {type(content).__name__} to string")
         
         # Truncate content if it's too long to avoid token limits
         truncated_content = self._truncate_content(content, max_length=5000)
@@ -71,17 +83,29 @@ class DocumentInsightGenerator:
             insight=insight
         )
     
-    def _truncate_content(self, content: str, max_length: int = 5000) -> str:
+    def _truncate_content(self, content: Any, max_length: int = 5000) -> str:
         """
         Truncate content to a maximum length while preserving coherent paragraphs.
         
         Args:
-            content: Document content text
+            content: Document content text (string or bytes)
             max_length: Maximum characters to include
             
         Returns:
             Truncated content
         """
+        # Ensure content is a string
+        if isinstance(content, bytes):
+            try:
+                content = content.decode('utf-8')
+            except UnicodeDecodeError:
+                content = content.decode('utf-8', errors='replace')
+                logger.warning("Content had to be decoded with 'replace' error handling - some characters may be incorrect")
+        elif not isinstance(content, str):
+            content = str(content)
+            logger.warning(f"Content was converted from {type(content)} to string")
+        
+        # Now proceed with string-based operations
         if len(content) <= max_length:
             return content
         

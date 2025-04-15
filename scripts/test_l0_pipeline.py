@@ -207,6 +207,17 @@ def main():
             if result.status == ProcessingStatus.FAILED:
                 logger.error(f"Error: {result.error}")
             
+            # Verify document embedding was created
+            if result.status == ProcessingStatus.COMPLETED:
+                try:
+                    doc_embedding = vector_db.get_document_embedding(user_id, result.document_id)
+                    if doc_embedding:
+                        logger.info(f"✅ Document embedding created successfully (dim: {len(doc_embedding['embedding'])})")
+                    else:
+                        logger.warning("❌ Document embedding not found")
+                except Exception as e:
+                    logger.error(f"Error verifying document embedding: {e}")
+            
             # Success!
             logger.info("Test completed successfully")
         except Exception as e:

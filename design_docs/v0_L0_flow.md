@@ -177,14 +177,48 @@ tenant/1/                           # For MVP, only user_id = 1
 ### Weaviate Schema (Multi-Tenant Design)
 
 ```
+Document {
+  class: "Document"               # Root document object
+  uuid: UUID                      # Unique document ID
+  properties: {
+    document_id: String           # Reference to PostgreSQL document ID 
+    s3_path: String               # Path to document in S3
+    title: String                 # Document title (from metadata)
+    filename: String              # Original filename
+    content_type: String          # MIME type
+    timestamp: DateTime           # Processing timestamp
+  }
+  vectorIndexConfig: {
+    distance: "cosine"
+  }
+  multiTenancy: {
+    enabled: true
+  }
+  invertedIndexConfig: {
+    indexNullState: true
+    indexPropertyLength: true
+  }
+}
+
 TenantChunk {
-  document_id: String            # Source document ID
-  s3_path: String                # Direct path to chunk file in Wasabi
-  chunk_index: Integer           # Index of chunk in document
-  metadata: Object {             # Additional metadata
-    filename: String
-    content_type: String
-    timestamp: DateTime
+  class: "TenantChunk"                  # Document chunk
+  uuid: UUID                      # Unique chunk ID
+  properties: {
+    document_id: String           # Reference to parent document
+    s3_path: String               # Path to chunk in S3
+    chunk_index: Number           # Position in document
+    page_number: Number           # Page number (if applicable)
+    timestamp: DateTime           # Processing timestamp
+  }
+  vectorIndexConfig: {
+    distance: "cosine"
+  }
+  multiTenancy: {
+    enabled: true
+  }
+  invertedIndexConfig: {
+    indexNullState: true
+    indexPropertyLength: true
   }
 }
 ```
@@ -201,6 +235,9 @@ Document {
   uploaded_at: DateTime          # Upload timestamp
   processed: Boolean             # Processing status
   chunk_count: Integer           # Number of chunks generated
+  title: Text                    # processed title
+  insight: JsonB                 # Json blob of processed insight
+  summary: JsonB                 # Json blob of processed summary
 }
 ```
 

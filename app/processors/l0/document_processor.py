@@ -190,6 +190,37 @@ class DocumentProcessor:
             logger.info(f"Extracting content from document: {file_info.filename}")
             extracted_content = self.content_extractor.extract(file_info)
             
+            # Generate and store document-level embedding
+            logger.info(f"Generating document-level embedding for {document_id}")
+            try:
+                # Generate embedding directly from extracted content
+                document_embedding = self.embedding_generator.get_embedding_for_text(extracted_content)
+                
+                # Prepare metadata for storage
+                metadata = {
+                    "filename": file_info.filename,
+                    "content_type": file_info.content_type,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                
+                # Store the document embedding in Weaviate
+                tenant_id = self.user_id
+                self._ensure_tenant_exists(tenant_id)
+                
+                # Add the document to vector DB
+                self.vector_db_provider.add_document(
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    s3_path=s3_path,
+                    embedding=document_embedding,
+                    metadata=metadata
+                )
+                
+                logger.info(f"Successfully stored document-level embedding for {document_id}")
+            except Exception as e:
+                logger.error(f"Error generating/storing document embedding: {str(e)}")
+                # Continue processing despite embedding error
+            
             # Step 3: Analyze document using two-stage process
             logger.info(f"Using two-stage analysis for document: {file_info.filename}")
             analysis_results = self.document_insight_processor.process_document(
