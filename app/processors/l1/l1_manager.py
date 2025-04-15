@@ -18,10 +18,11 @@ from app.providers.l1.postgres_adapter import PostgresAdapter
 from app.providers.l1.wasabi_adapter import WasabiStorageAdapter
 from app.providers.l1.weaviate_adapter import WeaviateAdapter
 
-# Will be implemented
+# Import generator components
 from app.processors.l1.l1_generator import L1Generator
 from app.processors.l1.topics_generator import TopicsGenerator
 from app.processors.l1.shade_generator import ShadeGenerator
+from app.processors.l1.shade_merger import ShadeMerger
 from app.processors.l1.biography_generator import BiographyGenerator
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,11 @@ class L1Manager:
         postgres_adapter: Optional[PostgresAdapter] = None,
         wasabi_adapter: Optional[WasabiStorageAdapter] = None,
         weaviate_adapter: Optional[WeaviateAdapter] = None,
-        l1_generator: Optional[L1Generator] = None
+        l1_generator: Optional[L1Generator] = None,
+        topics_generator: Optional[TopicsGenerator] = None,
+        shade_generator: Optional[ShadeGenerator] = None,
+        shade_merger: Optional[ShadeMerger] = None,
+        biography_generator: Optional[BiographyGenerator] = None
     ):
         """
         Initialize the L1Manager.
@@ -58,17 +63,28 @@ class L1Manager:
             wasabi_adapter: WasabiStorageAdapter instance for S3 operations
             weaviate_adapter: WeaviateAdapter instance for vector operations
             l1_generator: L1Generator instance for generating L1 representations
+            topics_generator: TopicsGenerator instance for topics/clusters generation
+            shade_generator: ShadeGenerator instance for shade generation
+            shade_merger: ShadeMerger instance for merging similar shades
+            biography_generator: BiographyGenerator instance for biography generation
         """
         self.postgres_adapter = postgres_adapter or PostgresAdapter()
         self.wasabi_adapter = wasabi_adapter or WasabiStorageAdapter()
         self.weaviate_adapter = weaviate_adapter or WeaviateAdapter()
         self.l1_generator = l1_generator or L1Generator()
         
-        # Initialize additional generator components
-        self.topics_generator = self.l1_generator
-        self.shade_generator = self.l1_generator
-        self.shade_merger = self.l1_generator
-        self.biography_generator = self.l1_generator
+        # Initialize specialized generator components
+        self.topics_generator = topics_generator or TopicsGenerator()
+        self.shade_generator = shade_generator or ShadeGenerator()
+        
+        # Initialize shade merger (shares the same shade_generator if not provided)
+        if shade_merger:
+            self.shade_merger = shade_merger
+        else:
+            # If shade_merger is not provided, create a new one using the same shade_generator
+            self.shade_merger = ShadeMerger(shade_generator=self.shade_generator)
+            
+        self.biography_generator = biography_generator or BiographyGenerator()
         
         # Set up logger
         self.logger = logging.getLogger(__name__)
@@ -226,12 +242,19 @@ class L1Manager:
                 continue
             
             # Ensure create_time is in string format
-            create_time = doc.create_time
+            # Use uploaded_at instead of create_time (which doesn't exist in our Document model)
+            create_time = doc.uploaded_at if hasattr(doc, 'uploaded_at') else datetime.now()
             if isinstance(create_time, datetime):
                 create_time = create_time.strftime("%Y-%m-%d %H:%M:%S")
             
             # Get document insight and summary from Wasabi
             document_data = self.wasabi_adapter.get_document(user_id, doc_id)
+            
+            # Handle case where document_data is None
+            if document_data is None:
+                self.logger.warning(f"Document {doc_id} missing document data from Wasabi")
+                document_data = {}
+                
             insight_data = document_data.get("insight", {}) or {}
             summary_data = document_data.get("summary", {}) or {}
             

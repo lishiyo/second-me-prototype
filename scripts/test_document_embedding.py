@@ -102,6 +102,9 @@ def test_document_embedding_pipeline():
         
         if chunk_embeddings and len(chunk_embeddings) > 0:
             logger.info(f"✅ Chunk embeddings found: count={len(chunk_embeddings)}")
+            if len(chunk_embeddings) != len(chunks):
+                logger.error(f"❌ Chunk embeddings do NOT match number of chunks for {doc_id}")
+                continue
         else:
             logger.error(f"❌ Chunk embeddings NOT found for {doc_id}")
             continue
@@ -120,7 +123,8 @@ def test_document_embedding_pipeline():
                 if summary_data:
                     logger.info(f"✅ Summary found: {len(summary_data.get('summary', '')) > 0}")
             else:
-                logger.warning(f"⚠️ Document data NOT found in Wasabi for {doc_id}")
+                logger.error(f"⚠️ Document data NOT found in Wasabi for {doc_id}")
+                continue;
         except Exception as e:
             logger.error(f"❌ Error getting document data from Wasabi: {e}")
             continue
@@ -146,9 +150,12 @@ def test_document_embedding_pipeline():
         return True
 
 if __name__ == "__main__":
+    # Run the document embedding pipeline test
     success = test_document_embedding_pipeline()
+    
     if success:
         logger.info("Document embedding verification completed successfully!")
+        sys.exit(0)
     else:
         logger.error("Document embedding verification failed!")
         sys.exit(1) 

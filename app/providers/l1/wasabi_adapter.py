@@ -654,7 +654,12 @@ class WasabiStorageAdapter:
             # Prepare the result document data
             document_data = {
                 "id": document_id,
-                "user_id": user_id
+                "user_id": user_id,
+                "title": "",
+                "insight": {},
+                "summary": {},
+                "keywords": [],
+                "has_raw_content": False
             }
             
             # Get document insight from metadata folder
@@ -694,11 +699,18 @@ class WasabiStorageAdapter:
                 logger.warning(f"Error listing raw objects for document {document_id}: {e}")
                 document_data["has_raw_content"] = False
             
-            if insight_data or summary_data or document_data.get("has_raw_content", False):
-                return document_data
+            # Always return document_data with at least the basic structure, even if empty
+            return document_data
                 
-            logger.warning(f"No document data found for document {document_id} for user {user_id}")
-            return None
         except Exception as e:
             logger.error(f"Error retrieving document from Wasabi: {e}")
-            return None 
+            # Return a minimal document structure instead of None
+            return {
+                "id": document_id,
+                "user_id": user_id,
+                "title": "",
+                "insight": {},
+                "summary": {},
+                "keywords": [],
+                "has_raw_content": False
+            } 
