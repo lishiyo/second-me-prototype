@@ -54,7 +54,7 @@ def verify_environment():
     
     logger.info("Environment verification complete")
 
-def test_extract_notes_from_l0():
+def run_extract_notes_from_l0():
     """Test the _extract_notes_from_l0 method of L1Manager with real L0 data"""
     logger.info("Starting test of _extract_notes_from_l0 with REAL adapters...")
     
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     logger.info("=== Starting L1Manager methods test with proper dependency injection ===")
     
     # Run the test of _extract_notes_from_l0
-    notes_test_success = test_extract_notes_from_l0()
+    notes_test_success = run_extract_notes_from_l0()
     
     # Final results
     if notes_test_success:

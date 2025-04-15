@@ -235,3 +235,37 @@ We're implementing the Core Processing Phase (Phase 2) of the L1 layer as outlin
 - L1Manager provides the orchestration layer connecting all components
 - Tests verify proper integration with storage adapters and LLM-based generation
 - Next implementation focus is on the data flow between L0 and L1 layers 
+
+## 2025-04-17 15:10:26 PDT
+
+### Section Being Implemented
+We're implementing the Core Processing Phase (Phase 2) of the L1 layer, specifically focusing on the data flow between L0 and L1 by making the extraction of notes from L0 data fully functional. We've also improved the architecture by implementing proper dependency injection across all components.
+
+### What's Working
+- Proper dependency injection for all L1 generator components (requiring dependencies rather than creating them internally)
+- L1Manager._extract_notes_from_l0 method fully functional with real data
+- WasabiStorageAdapter.get_document correctly fetches raw document content
+- Note creation pipeline with proper embeddings and chunks
+- Memory list generation for clustering algorithms
+- Full test script with real database connections shows data is correctly extracted
+
+### What's Broken
+- Nothing is currently broken in the implemented code
+- Still need to implement L1Manager._store_l1_data for the full pipeline to work
+- The generate_l1_from_l0 method needs testing with real data
+
+### Current Blockers
+- No significant blockers for continued implementation
+
+### Database/Model State
+- L1 generator components now strictly require their dependencies:
+  - LLMService for generating content
+  - WasabiStorageAdapter for accessing document storage
+  - Storage adapters are properly shared across components
+- Note model populated with document data:
+  - Raw content from Wasabi
+  - Document embedding from Weaviate
+  - Chunk data with embeddings from Weaviate
+  - Metadata from PostgreSQL and Wasabi
+  - Proper compatibility with lpm_kernel field names
+- Next implementation focus is on implementing the L1Manager._store_l1_data method to complete the pipeline 
