@@ -269,3 +269,35 @@ We're implementing the Core Processing Phase (Phase 2) of the L1 layer, specific
   - Metadata from PostgreSQL and Wasabi
   - Proper compatibility with lpm_kernel field names
 - Next implementation focus is on implementing the L1Manager._store_l1_data method to complete the pipeline 
+
+## 2025-04-18 16:20:14 PDT
+
+### Section Being Implemented
+We're fixing a critical issue in the L1 processing pipeline related to how embeddings are handled. Specifically, we've discovered that Weaviate returns embeddings as dictionaries with a 'default' key rather than as direct vector arrays, which was causing issues in our model classes.
+
+### What's Working
+- Identified the source of the embedding format issue through detailed logging
+- Implemented a transformation at the boundary layer in all Weaviate adapter methods
+- Created a centralized utility method (extract_embedding_from_dict) in VectorDB for consistent processing
+- Updated all model classes (Topic, Memory, Chunk, Note, Cluster) with proper embedding validation
+- Added robust error handling that fails fast with clear error messages
+- Fixed memory_list creation in l1_manager.py to handle embedding dictionary format
+- Successfully tested with real documents using test_document_embedding.py script
+
+### What's Broken
+- Nothing is currently broken after the fixes have been implemented
+- Previous silent failures with dummy vectors have been replaced with explicit error handling
+
+### Current Blockers
+- No significant blockers for continued L1 implementation
+
+### Database/Model State
+- All model classes now properly handle and validate embeddings:
+  - __post_init__ methods check for dictionary formats, invalid shapes, and scalars
+  - squeeze methods throw specific errors instead of silently creating dummy vectors
+  - Clear error messages identify the problematic embedding and the nature of the issue
+- Boundary layer transformation ensures consistent embedding format throughout the application:
+  - WeaviateAdapter methods extract actual vectors from Weaviate's dictionary format
+  - VectorDB.extract_embedding_from_dict utility provides centralized extraction logic
+  - Memory objects, Notes, Chunks, and Topics all receive proper vector data
+- Next implementation focus is on thoroughly testing these fixes with the full L1 generation pipeline 

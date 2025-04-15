@@ -587,14 +587,16 @@ if __name__ == "__main__":
     logger.info("=== Starting L1Manager methods test with proper dependency injection ===")
     
     # Run the test of _extract_notes_from_l0
-    notes_test_success = run_extract_notes_from_l0()
+    # notes_test_success = run_extract_notes_from_l0()
     
     # Run the topics for shades test
-    # logger.info("\n=== Starting topics for shades test ===")
-    # topics_test_success = run_topics_for_shades()
+    logger.info("\n=== Starting topics for shades test ===")
+    topics_test_success = run_topics_for_shades()
+
+    method_to_test = topics_test_success;
     
     # Final results
-    if notes_test_success:
+    if method_to_test:
         logger.info("All tests completed successfully!")
         sys.exit(0)
     else:

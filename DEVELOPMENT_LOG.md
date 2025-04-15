@@ -235,3 +235,31 @@ python scripts/run_l1_manager_methods.py
 - Connect the L1 data generation pipeline to the REST API
 - Add periodic scheduling for L1 generation based on new L0 documents
 - Enhance resilience and error handling for production 
+
+## 2025-04-18 16:20:14 PDT
+
+### Current Status
+- Fixed critical issue with embedding format in L1 processing pipeline
+- Identified that Weaviate returns embeddings as dictionaries with a 'default' key
+- Added transformation at the boundary layer in WeaviateAdapter and VectorDB classes
+- Created extract_embedding_from_dict utility method for handling dictionary embeddings
+- Updated all model classes to properly validate embeddings with robust error handling
+- Added __post_init__ validation and squeeze methods to Topic, Memory, Chunk, Note, and Cluster classes
+- Fixed memory_list creation in l1_manager.py to handle dictionary embeddings correctly
+- Added detailed logging to diagnose embedding format issues
+
+### Commands Run
+```bash
+# Added test script to verify embedding format from Weaviate
+python scripts/test_document_embedding.py
+
+# Running with added logging to diagnose embedding issues
+python scripts/test_document_embedding.py
+```
+
+### Next Steps Planned
+- Complete integration testing for the fixed embedding handling
+- Implement L1Manager._store_l1_data method to save L1 data in PostgreSQL, Wasabi, and Weaviate
+- Test the full generate_l1_from_l0 method with real data
+- Investigate any potential performance implications of the embedding processing
+- Add monitoring for embedding dimensions and formats in production 
