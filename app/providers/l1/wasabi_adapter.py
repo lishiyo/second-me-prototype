@@ -673,7 +673,7 @@ class WasabiStorageAdapter:
             
             if summary_data:
                 document_data.update({
-                    "summary": summary_data.get("summary", {}),
+                    "summary": summary_data,
                     "keywords": summary_data.get("keywords", [])
                 })
             
@@ -691,14 +691,14 @@ class WasabiStorageAdapter:
                     # Client code should request it separately if needed
                     document_data["has_raw_content"] = True
             except Exception as e:
-                self.logger.warning(f"Error listing raw objects for document {document_id}: {e}")
+                logger.warning(f"Error listing raw objects for document {document_id}: {e}")
                 document_data["has_raw_content"] = False
             
             if insight_data or summary_data or document_data.get("has_raw_content", False):
                 return document_data
                 
-            self.logger.warning(f"No document data found for document {document_id} for user {user_id}")
+            logger.warning(f"No document data found for document {document_id} for user {user_id}")
             return None
         except Exception as e:
-            self.logger.error(f"Error retrieving document from Wasabi: {e}")
+            logger.error(f"Error retrieving document from Wasabi: {e}")
             return None 

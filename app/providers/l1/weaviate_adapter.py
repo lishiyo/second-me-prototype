@@ -1,29 +1,34 @@
 """
-WeaviateAdapter for L1 layer.
+Weaviate adapter for L1 layer.
 
 This module provides an adapter for interacting with the Weaviate vector database
-for L1 data including topics, clusters, and shades.
+for L1 data including topics, clusters, shades, and biographies.
 """
-import logging
+import os
 import json
-from typing import List, Dict, Any, Optional, Tuple, Union
+import uuid
+import hashlib
+import logging
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple, Union, Set
 
 import weaviate
 from weaviate.util import generate_uuid5
 
-from app.providers.vector_db import VectorDB
 from app.models.l1.topic import Topic, Cluster
 from app.models.l1.shade import Shade
 from app.models.l1.bio import Bio
-from app.models.l1.note import Chunk
+from app.models.l1.note import Note, Chunk
+from app.providers.vector_db import VectorDB
+from weaviate.collections.classes.filters import Filter
+
+# Constants
+TOPICS_COLLECTION = "TenantTopic"
+CLUSTERS_COLLECTION = "TenantCluster"
+SHADES_COLLECTION = "TenantShade"
+BIOS_COLLECTION = "TenantBiography"
 
 logger = logging.getLogger(__name__)
-
-# Constants for collection names
-TOPICS_COLLECTION = "L1Topics"
-CLUSTERS_COLLECTION = "L1Clusters"
-SHADES_COLLECTION = "L1Shades"
-BIOS_COLLECTION = "L1Biographies"
 
 class InvalidModelError(Exception):
     """Exception raised when a model is invalid."""
@@ -49,6 +54,9 @@ class WeaviateAdapter:
         else:
             vector_db = VectorDB()
             self.client = vector_db.client
+        
+        # Setup logger
+        self.logger = logging.getLogger(__name__)
     
     def _generate_uuid(self, entity_type: str, user_id: str, entity_id: str) -> str:
         """
@@ -1071,38 +1079,23 @@ class WeaviateAdapter:
             Document embedding vector or None if not found
         """
         try:
-            # Query TenantChunk collection with document_id filter, 
-            # TODO: We need an actual full-document embedding, not just a chunk
-            # Fetch the document's primary chunk as that contains the full document embedding
-            result = (
-                self.client.query
-                .get("TenantChunk", ["embedding"])
-                .with_where({
-                    "operator": "And",
-                    "operands": [
-                        {
-                            "path": ["document_id"],
-                            "operator": "Equal",
-                            "valueString": document_id
-                        },
-                        {
-                            "path": ["is_primary"],
-                            "operator": "Equal",
-                            "valueBoolean": True
-                        }
-                    ]
-                })
-                .with_tenant(user_id)  # Use Weaviate's multi-tenancy
-                .with_limit(1)
-                .do()
+            collection = self.client.collections.get("Document")
+            tenant_collection = collection.with_tenant(user_id)
+            
+            # Build filter using Filter API
+            document_filter = Filter.by_property("document_id").equal(document_id)
+            
+            # Execute the query
+            result = tenant_collection.query.fetch_objects(
+                filters=document_filter,
+                limit=1,
+                include_vector=True
             )
             
-            chunks = result.get("data", {}).get("Get", {}).get("TenantChunk", [])
+            if result.objects and len(result.objects) > 0:
+                return result.objects[0].vector
             
-            if chunks and len(chunks) > 0 and "embedding" in chunks[0]:
-                return chunks[0]["embedding"]
-            
-            self.logger.warning(f"No embedding found for document {document_id} for user {user_id}")
+            self.logger.warning(f"No document embedding found for document {document_id} for user {user_id}")
             return None
         except Exception as e:
             logger.error(f"Error getting document embedding: {e}")
@@ -1120,22 +1113,22 @@ class WeaviateAdapter:
             List of chunk objects with content, metadata and embeddings
         """
         try:
-            # Query TenantChunk collection to get metadata and s3_path references
-            result = (
-                self.client.query
-                .get("TenantChunk", ["chunk_id", "s3_path", "chunk_index", "embedding", "tags", "topic"])
-                .with_where({
-                    "path": ["document_id"],
-                    "operator": "Equal",
-                    "valueString": document_id
-                })
-                .with_tenant(user_id)  # Use Weaviate's multi-tenancy
-                .do()
+            # Get tenant collection
+            collection = self.client.collections.get("TenantChunk")
+            tenant_collection = collection.with_tenant(user_id)
+            
+            # Build filter for document chunks using Filter API
+            document_filter = Filter.by_property("document_id").equal(document_id)
+            
+            # Execute the query - include topic and tags in properties
+            result = tenant_collection.query.fetch_objects(
+                filters=document_filter,
+                return_properties=["document_id", "s3_path", "chunk_index", "filename", 
+                                  "content_type", "timestamp", "topic", "tags"],
+                include_vector=True
             )
             
-            chunks_data = result.get("data", {}).get("Get", {}).get("TenantChunk", [])
-            
-            if not chunks_data:
+            if not result.objects:
                 self.logger.warning(f"No chunks found for document {document_id} in Weaviate")
                 return []
             
@@ -1143,11 +1136,17 @@ class WeaviateAdapter:
             from app.providers.blob_store import BlobStore
             blob_store = BlobStore()
             
+            # Import VectorDB for the static generate_consistent_id method
+            from app.providers.vector_db import VectorDB
+            
             # Convert to objects with expected properties
             chunk_objects = []
-            for chunk_data in chunks_data:
-                chunk_id = chunk_data.get("chunk_id")
-                s3_path = chunk_data.get("s3_path")
+            for obj in result.objects:
+                props = obj.properties
+                chunk_index = props.get("chunk_index", 0)
+                # Use consistent ID generation
+                chunk_id = VectorDB.generate_consistent_id(user_id, document_id, chunk_index)
+                s3_path = props.get("s3_path")
                 
                 # Get the actual content from Wasabi
                 content = ""
@@ -1160,14 +1159,15 @@ class WeaviateAdapter:
                         # Continue with empty content if we can't load it
                 
                 # Create a chunk object with properties matching what L1 expects
+                # Use properties from Weaviate if available, otherwise empty defaults
                 chunk_obj = Chunk(
                     id=chunk_id,
                     document_id=document_id,
                     content=content,
-                    embedding=chunk_data.get("embedding", []),
-                    tags=chunk_data.get("tags", []),
-                    topic=chunk_data.get("topic", ""),
-                    chunk_index=chunk_data.get("chunk_index", 0)
+                    embedding=obj.vector,
+                    tags=props.get("tags", []),  # Use tags from properties if available
+                    topic=props.get("topic", ""),  # Use topic from properties if available
+                    chunk_index=chunk_index
                 )
                 chunk_objects.append(chunk_obj)
                 
@@ -1188,28 +1188,30 @@ class WeaviateAdapter:
             Dictionary mapping chunk_id to embedding vector
         """
         try:
-            # Query TenantChunk collection with document_id filter using multi-tenancy
-            result = (
-                self.client.query
-                .get("TenantChunk", ["chunk_id", "embedding"])
-                .with_where({
-                    "path": ["document_id"],
-                    "operator": "Equal",
-                    "valueString": document_id
-                })
-                .with_tenant(user_id)  # Use Weaviate's multi-tenancy
-                .do()
+            # Get tenant collection
+            collection = self.client.collections.get("TenantChunk")
+            tenant_collection = collection.with_tenant(user_id)
+            
+            # Build filter for document chunks using Filter API
+            document_filter = Filter.by_property("document_id").equal(document_id)
+            
+            # Execute the query
+            result = tenant_collection.query.fetch_objects(
+                filters=document_filter,
+                return_properties=["chunk_index"],
+                include_vector=True
             )
             
-            chunks = result.get("data", {}).get("Get", {}).get("TenantChunk", [])
+            # Import VectorDB to use the static generate_consistent_id method
+            from app.providers.vector_db import VectorDB
             
             # Map chunk_id to embedding
             embeddings = {}
-            for chunk in chunks:
-                chunk_id = chunk.get("chunk_id")
-                embedding = chunk.get("embedding")
-                if chunk_id and embedding:
-                    embeddings[chunk_id] = embedding
+            for obj in result.objects:
+                chunk_index = obj.properties.get("chunk_index", 0)
+                chunk_id = VectorDB.generate_consistent_id(user_id, document_id, chunk_index)
+                if obj.vector:
+                    embeddings[chunk_id] = obj.vector
             
             return embeddings
         except Exception as e:

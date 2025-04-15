@@ -124,6 +124,18 @@ class VectorDB:
                     data_type=DataType.INT,
                     indexing={"filterable": True, "searchable": True},
                 ),
+                Property(
+                    name="topic",
+                    description="Topic classification for the chunk",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": True},
+                ),
+                Property(
+                    name="tags",
+                    description="List of tags associated with the chunk",
+                    data_type=DataType.TEXT_ARRAY,
+                    indexing={"filterable": True, "searchable": True},
+                ),
             ]
         )
         
@@ -183,7 +195,8 @@ class VectorDB:
             ]
         )
     
-    def generate_consistent_id(self, tenant_id: str, document_id: str, chunk_index: int) -> str:
+    @staticmethod
+    def generate_consistent_id(tenant_id: str, document_id: str, chunk_index: int) -> str:
         """
         Generate a consistent UUID for a chunk based on tenant, document, and chunk index.
         
@@ -230,7 +243,7 @@ class VectorDB:
             UUID of the added object
         """
         try:
-            obj_id = self.generate_consistent_id(tenant_id, document_id, chunk_index)
+            obj_id = VectorDB.generate_consistent_id(tenant_id, document_id, chunk_index)
             
             # Prepare the object data
             properties = {
@@ -239,7 +252,9 @@ class VectorDB:
                 "chunk_index": chunk_index,
                 "filename": metadata.get("filename", ""),
                 "content_type": metadata.get("content_type", ""),
-                "timestamp": metadata.get("timestamp", "")
+                "timestamp": metadata.get("timestamp", ""),
+                "topic": metadata.get("topic", ""),  # Add topic from metadata
+                "tags": metadata.get("tags", [])     # Add tags from metadata
             }
             
             # Get the tenant-specific collection
@@ -291,7 +306,7 @@ class VectorDB:
                 # Process the chunks
                 with tenant_collection.batch.dynamic() as batch:
                     for chunk in tenant_chunk_list:
-                        obj_id = self.generate_consistent_id(
+                        obj_id = VectorDB.generate_consistent_id(
                             chunk["tenant_id"], 
                             chunk["document_id"], 
                             chunk["chunk_index"]
@@ -311,7 +326,9 @@ class VectorDB:
                             "chunk_index": chunk["chunk_index"],
                             "filename": chunk["metadata"].get("filename", ""),
                             "content_type": chunk["metadata"].get("content_type", ""),
-                            "timestamp": timestamp
+                            "timestamp": timestamp,
+                            "topic": chunk["metadata"].get("topic", ""),  # Add topic from metadata
+                            "tags": chunk["metadata"].get("tags", [])     # Add tags from metadata
                         }
                         
                         # Add to batch with embedding vector

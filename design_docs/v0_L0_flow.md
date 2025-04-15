@@ -201,14 +201,17 @@ Document {
 }
 
 TenantChunk {
-  class: "TenantChunk"                  # Document chunk
+  class: "TenantChunk"            # Document chunk
   uuid: UUID                      # Unique chunk ID
   properties: {
     document_id: String           # Reference to parent document
     s3_path: String               # Path to chunk in S3
     chunk_index: Number           # Position in document
-    page_number: Number           # Page number (if applicable)
     timestamp: DateTime           # Processing timestamp
+    filename: String              # Original filename
+    content_type: String          # MIME type
+    topic: String                 # Topic classification for the chunk
+    tags: [String]                # List of tags associated with the chunk
   }
   vectorIndexConfig: {
     distance: "cosine"
@@ -222,7 +225,6 @@ TenantChunk {
   }
 }
 ```
-
 ### PostgreSQL Document Model
 
 ```
@@ -238,8 +240,7 @@ Document {
   title: Text                    # processed title
   insight: JsonB                 # Json blob of processed insight
   summary: JsonB                 # Json blob of processed summary
-}
-```
+}```
 
 ## Processing Flow
 
@@ -301,3 +302,5 @@ Document {
 - Implement proper connection pooling for database operations
 - Monitor and optimize S3 operations to minimize costs
 - Use streaming for large file processing
+
+

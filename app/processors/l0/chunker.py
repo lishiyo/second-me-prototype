@@ -186,14 +186,13 @@ class Chunker:
             content: Chunk content
             chunk_idx: Index of the chunk
             document_id: ID of the document
-            chunk_id_prefix: Optional prefix for chunk ID
+            chunk_id_prefix: Optional prefix for chunk ID (deprecated, kept for compatibility)
             metadata: Optional metadata
             
         Returns:
             Dictionary with chunk information
         """
-        # Generate chunk_id using prefix and index
-        chunk_id = f"{chunk_id_prefix}{chunk_idx}" if chunk_id_prefix else str(chunk_idx)
+        # Note: chunk_id will be set by document_processor using vector_db_provider.generate_consistent_id
         
         # Ensure content is a string
         if not isinstance(content, str):
@@ -203,7 +202,6 @@ class Chunker:
         # Create a dictionary with all chunk information
         chunk_dict = {
             "content": content,
-            "chunk_id": chunk_id,
             "chunk_index": chunk_idx,
             "document_id": document_id,
             "metadata": metadata or {}

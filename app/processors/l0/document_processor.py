@@ -19,6 +19,7 @@ from app.processors.l0.embedding_generator import EmbeddingGenerator
 from app.processors.l0.utils import setup_logger, retry, safe_execute
 from app.core.config import settings
 from app.providers.rel_db import Document
+from app.providers.vector_db import VectorDB
 
 # Set up logger
 logger = setup_logger(__name__)
@@ -575,7 +576,10 @@ class DocumentProcessor:
                 
                 # Generate a unique ID for the chunk if not present
                 if not hasattr(chunk, 'chunk_id') or not chunk.chunk_id:
-                    chunk.chunk_id = f"{file_info.document_id}_chunk_{i}"
+                    # Use VectorDB's static generate_consistent_id for consistent IDs
+                    chunk.chunk_id = VectorDB.generate_consistent_id(
+                        self.user_id, file_info.document_id, i
+                    )
                 
                 # Generate S3 path for the chunk
                 s3_key = f"tenant/{self.user_id}/chunks/{file_info.document_id}/chunk_{i}.txt"
