@@ -151,32 +151,36 @@ class TopicsGenerator:
             A dictionary containing updated cluster list and outlier memory list
         """
         # Log input data
-        logger.info(f"DIAGNOSTIC INPUT: User ID: {user_id}")
-        logger.info(f"DIAGNOSTIC INPUT: Old clusters count: {len(old_cluster_list)}")
-        logger.info(f"DIAGNOSTIC INPUT: Old outliers count: {len(old_outlier_memory_list)}")
-        logger.info(f"DIAGNOSTIC INPUT: New memories count: {len(new_memory_list)}")
+        # logger.info(f"DIAGNOSTIC INPUT: User ID: {user_id}")
+        # logger.info(f"DIAGNOSTIC INPUT: Old clusters count: {len(old_cluster_list)}")
+        # logger.info(f"DIAGNOSTIC INPUT: Old outliers count: {len(old_outlier_memory_list)}")
+        # logger.info(f"DIAGNOSTIC INPUT: New memories count: {len(new_memory_list)}")
         
         # Check a sample of the memory structure
         if new_memory_list:
             sample_memory = new_memory_list[0]
-            logger.info(f"DIAGNOSTIC INPUT: Sample memory keys: {list(sample_memory.keys())}")
+            # logger.info(f"DIAGNOSTIC INPUT: Sample memory keys: {list(sample_memory.keys())}")
             if "memoryId" in sample_memory:
-                logger.info(f"DIAGNOSTIC INPUT: Sample memory ID: {sample_memory['memoryId']}")
+                # logger.info(f"DIAGNOSTIC INPUT: Sample memory ID: {sample_memory['memoryId']}")
+                pass
             if "embedding" in sample_memory:
                 embedding = sample_memory["embedding"]
                 if isinstance(embedding, list):
-                    logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: list, length: {len(embedding)}")
+                    # logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: list, length: {len(embedding)}")
+                    pass
                 elif isinstance(embedding, np.ndarray):
-                    logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: ndarray, shape: {embedding.shape}")
+                    # logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: ndarray, shape: {embedding.shape}")
+                    pass
                 else:
-                    logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: {type(embedding)}")
+                    # logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: {type(embedding)}")
+                    pass
         
         # Use default values if not provided
         cophenetic_distance = cophenetic_distance or self.default_cophenetic_distance
         outlier_cutoff_distance = outlier_cutoff_distance or self.default_outlier_cutoff_distance
         cluster_merge_distance = cluster_merge_distance or self.default_cluster_merge_distance
         
-        logger.info(f"DIAGNOSTIC PARAMS: cophenetic_distance={cophenetic_distance}, outlier_cutoff_distance={outlier_cutoff_distance}, cluster_merge_distance={cluster_merge_distance}")
+        # logger.info(f"DIAGNOSTIC PARAMS: cophenetic_distance={cophenetic_distance}, outlier_cutoff_distance={outlier_cutoff_distance}, cluster_merge_distance={cluster_merge_distance}")
         
         logger.info(f"Generating topics for shades with {len(new_memory_list)} new memories for user {user_id}")
         
@@ -233,13 +237,17 @@ class TopicsGenerator:
         
         # Diagnostic check for embedding shape
         if isinstance(embedding, list) and embedding:
-            logger.debug(f"DIAGNOSTIC: Memory {memory_id} has embedding list of length {len(embedding)}")
+            # logger.debug(f"DIAGNOSTIC: Memory {memory_id} has embedding list of length {len(embedding)}")
+            pass
         elif isinstance(embedding, np.ndarray):
-            logger.debug(f"DIAGNOSTIC: Memory {memory_id} has numpy embedding of shape {embedding.shape}")
+            # logger.debug(f"DIAGNOSTIC: Memory {memory_id} has numpy embedding of shape {embedding.shape}")
+            pass
         elif embedding is None:
-            logger.warning(f"DIAGNOSTIC: Memory {memory_id} has None embedding")
+            # logger.warning(f"DIAGNOSTIC: Memory {memory_id} has None embedding")
+            pass
         else:
-            logger.warning(f"DIAGNOSTIC: Memory {memory_id} has unexpected embedding type: {type(embedding)}")
+            # logger.warning(f"DIAGNOSTIC: Memory {memory_id} has unexpected embedding type: {type(embedding)}")
+            pass
         
         memory = Memory(
             memory_id=memory_id,
@@ -260,23 +268,24 @@ class TopicsGenerator:
             Cluster object
         """
         # Log full input cluster data for debugging
-        logger.info(f"DIAGNOSTIC: Converting cluster data keys: {list(cluster_data.keys())}")
+        # logger.info(f"DIAGNOSTIC: Converting cluster data keys: {list(cluster_data.keys())}")
         
         # Extract clusterId
         cluster_id = cluster_data.get("clusterId", "")
         if not cluster_id:
-            logger.warning(f"DIAGNOSTIC: Missing clusterId in cluster data")
-            logger.warning(f"DIAGNOSTIC: Full cluster data: {cluster_data}")
+            # logger.warning(f"DIAGNOSTIC: Missing clusterId in cluster data")
+            # logger.warning(f"DIAGNOSTIC: Full cluster data: {cluster_data}")
             # Try to provide a fallback ID
             cluster_id = str(uuid.uuid4())[:8]
-            logger.warning(f"DIAGNOSTIC: Generated fallback ID: {cluster_id}")
+            # logger.warning(f"DIAGNOSTIC: Generated fallback ID: {cluster_id}")
         else:
-            logger.info(f"DIAGNOSTIC: Found clusterId: {cluster_id}")
+            # logger.info(f"DIAGNOSTIC: Found clusterId: {cluster_id}")
+            pass
         
         # Extract memory list
         memory_list = []
         memory_list_data = cluster_data.get("memoryList", [])
-        logger.info(f"DIAGNOSTIC: Found {len(memory_list_data)} memories in memory list")
+        # logger.info(f"DIAGNOSTIC: Found {len(memory_list_data)} memories in memory list")
         
         # Convert each memory in the memory list
         for memory_data in memory_list_data:
@@ -284,7 +293,7 @@ class TopicsGenerator:
                 memory = self._convert_to_memory_object(memory_data)
                 memory_list.append(memory)
             except Exception as e:
-                logger.error(f"DIAGNOSTIC: Error converting memory: {str(e)}")
+                # logger.error(f"DIAGNOSTIC: Error converting memory: {str(e)}")
                 logger.error(traceback.format_exc())
         
         # Get other properties
@@ -299,9 +308,10 @@ class TopicsGenerator:
         # Check for center embedding
         center_embedding = cluster_data.get("centerEmbedding", None)
         if center_embedding is not None:
-            logger.info(f"DIAGNOSTIC: Found center embedding of type {type(center_embedding)}")
+            # logger.info(f"DIAGNOSTIC: Found center embedding of type {type(center_embedding)}")
+            pass
         
-        logger.info(f"DIAGNOSTIC: Created cluster {cluster_id} with {len(memory_list)} memories and name: {name}")
+        # logger.info(f"DIAGNOSTIC: Created cluster {cluster_id} with {len(memory_list)} memories and name: {name}")
         
         # Create the cluster object
         cluster = Cluster(
@@ -332,10 +342,10 @@ class TopicsGenerator:
             A tuple containing (generated_clusters, outlier_memories)
         """
         if not memory_list:
-            logger.info("DIAGNOSTIC: memory_list is empty, returning empty clusters and outliers")
+            # logger.info("DIAGNOSTIC: memory_list is empty, returning empty clusters and outliers")
             return [], []
             
-        logger.info(f"DIAGNOSTIC: _clusters_initial_strategy called with {len(memory_list)} memories and cophenetic_distance={cophenetic_distance}")
+        # logger.info(f"DIAGNOSTIC: _clusters_initial_strategy called with {len(memory_list)} memories and cophenetic_distance={cophenetic_distance}")
             
         # Log memory information for debugging
         for memory in memory_list[:3]:  # Only log a few
@@ -343,27 +353,27 @@ class TopicsGenerator:
         
         # Create matrix of embeddings for clustering
         memory_embeddings = [np.array(memory.embedding) for memory in memory_list]
-        logger.info(f"DIAGNOSTIC: Created embedding matrix with {len(memory_embeddings)} embeddings")
+        # logger.info(f"DIAGNOSTIC: Created embedding matrix with {len(memory_embeddings)} embeddings")
         
         # Perform hierarchical clustering
         if len(memory_embeddings) == 1:
             # If only one memory, create a single cluster
-            logger.info("DIAGNOSTIC: Only one memory, creating single cluster")
+            # logger.info("DIAGNOSTIC: Only one memory, creating single cluster")
             clusters = np.array([1])
         else:
             # Calculate linkage and get flat clusters
             try:
-                logger.info("DIAGNOSTIC: Performing hierarchical clustering")
+                # logger.info("DIAGNOSTIC: Performing hierarchical clustering")
                 linked = linkage(memory_embeddings, method="ward")
                 clusters = fcluster(linked, cophenetic_distance, criterion="distance")
-                logger.info(f"DIAGNOSTIC: Generated {len(np.unique(clusters))} clusters from {len(memory_embeddings)} embeddings")
+                # logger.info(f"DIAGNOSTIC: Generated {len(np.unique(clusters))} clusters from {len(memory_embeddings)} embeddings")
             except Exception as e:
-                logger.error(f"DIAGNOSTIC: Error in clustering: {str(e)}")
+                # logger.error(f"DIAGNOSTIC: Error in clustering: {str(e)}")
                 logger.error(traceback.format_exc())
                 return [], memory_list  # Return all as outliers if clustering fails
         
         labels = clusters.tolist()
-        logger.info(f"DIAGNOSTIC: Cluster labels distribution: {np.bincount(clusters)}")
+        # logger.info(f"DIAGNOSTIC: Cluster labels distribution: {np.bincount(clusters)}")
         
         # Map memories to clusters
         cluster_dict = {}
@@ -375,31 +385,34 @@ class TopicsGenerator:
                     name="New Cluster", # TODO this is unnecessary
                     metadata={"is_new": True}
                 )
-                logger.info(f"DIAGNOSTIC: Created new cluster with ID {label}")
+                # logger.info(f"DIAGNOSTIC: Created new cluster with ID {label}")
             cluster_dict[label].memory_list.append(memory)
         
-        logger.info(f"DIAGNOSTIC: Created {len(cluster_dict)} clusters from labels")
+        # logger.info(f"DIAGNOSTIC: Created {len(cluster_dict)} clusters from labels")
         
         # Log cluster details before filtering
         for label, cluster in list(cluster_dict.items())[:3]:
-            logger.info(f"DIAGNOSTIC: Pre-filter cluster {label} - ID: {cluster.id}, Name: {cluster.name}, Memory count: {len(cluster.memory_list)}")
+            # logger.info(f"DIAGNOSTIC: Pre-filter cluster {label} - ID: {cluster.id}, Name: {cluster.name}, Memory count: {len(cluster.memory_list)}")
+            pass
         
         # Remove small clusters
         size_threshold_before = size_threshold
         cluster_list = self._remove_immature_clusters(cluster_dict, size_threshold)
         
-        logger.info(f"DIAGNOSTIC: After filtering, {len(cluster_list)} clusters remain (threshold was {size_threshold_before})")
+        # logger.info(f"DIAGNOSTIC: After filtering, {len(cluster_list)} clusters remain (threshold was {size_threshold_before})")
         
         # Prune outliers from clusters
         for i, cluster in enumerate(cluster_list[:3]):
-            logger.info(f"DIAGNOSTIC: Before pruning, cluster {i+1} has {len(cluster.memory_list)} memories")
+            # logger.info(f"DIAGNOSTIC: Before pruning, cluster {i+1} has {len(cluster.memory_list)} memories")
+            pass
             
         for cluster in cluster_list:
             self._prune_outliers_from_cluster(cluster)
         
         # Log after pruning
         for i, cluster in enumerate(cluster_list[:3]):
-            logger.info(f"DIAGNOSTIC: After pruning, cluster {i+1} (ID {cluster.id}) has {len(cluster.memory_list)} memories")
+            # logger.info(f"DIAGNOSTIC: After pruning, cluster {i+1} (ID {cluster.id}) has {len(cluster.memory_list)} memories")
+            pass
         
         # Identify in-cluster and outlier memories
         in_cluster_memory_ids = [
@@ -414,13 +427,14 @@ class TopicsGenerator:
             if memory.memory_id not in in_cluster_memory_ids
         ]
         
-        logger.info(f"DIAGNOSTIC: Final stats - {len(cluster_list)} clusters, {len(in_cluster_memory_ids)} in-cluster memories, {len(outlier_memory_list)} outliers")
+        # logger.info(f"DIAGNOSTIC: Final stats - {len(cluster_list)} clusters, {len(in_cluster_memory_ids)} in-cluster memories, {len(outlier_memory_list)} outliers")
         
         # Log final clusters
         for i, cluster in enumerate(cluster_list[:3]):
-            logger.info(f"DIAGNOSTIC: Final cluster {i+1} - ID: {cluster.id}, Name: {cluster.name}, Memory count: {len(cluster.memory_list)}")
+            # logger.info(f"DIAGNOSTIC: Final cluster {i+1} - ID: {cluster.id}, Name: {cluster.name}, Memory count: {len(cluster.memory_list)}")
             if cluster.memory_list:
-                logger.info(f"DIAGNOSTIC: Sample memory ID in cluster: {cluster.memory_list[0].memory_id}")
+                # logger.info(f"DIAGNOSTIC: Sample memory ID in cluster: {cluster.memory_list[0].memory_id}")
+                pass
         
         return cluster_list, outlier_memory_list
     
@@ -436,7 +450,7 @@ class TopicsGenerator:
             List of clusters that meet the size threshold
         """
         if not cluster_dict:
-            logger.info("DIAGNOSTIC: _remove_immature_clusters called with empty cluster_dict")
+            # logger.info("DIAGNOSTIC: _remove_immature_clusters called with empty cluster_dict")
             return []
             
         # Calculate size threshold if not provided
@@ -445,13 +459,14 @@ class TopicsGenerator:
             # Use a smaller threshold - square root times 0.8 instead of just square root
             # This will allow smaller clusters to be kept
             size_threshold = math.sqrt(max_cluster_size) * 0.8
-            logger.info(f"DIAGNOSTIC: Calculated size_threshold = sqrt({max_cluster_size})*0.8 = {size_threshold}")
+            # logger.info(f"DIAGNOSTIC: Calculated size_threshold = sqrt({max_cluster_size})*0.8 = {size_threshold}")
         else:
-            logger.info(f"DIAGNOSTIC: Using provided size_threshold = {size_threshold}")
+            # logger.info(f"DIAGNOSTIC: Using provided size_threshold = {size_threshold}")
+            pass
             
         # Log before filtering
         cluster_sizes = {label: len(cluster.memory_list) for label, cluster in cluster_dict.items()}
-        logger.info(f"DIAGNOSTIC: Before filtering, cluster sizes: {cluster_sizes}")
+        # logger.info(f"DIAGNOSTIC: Before filtering, cluster sizes: {cluster_sizes}")
             
         # Keep only clusters that meet the size threshold
         cluster_list = [
@@ -461,11 +476,11 @@ class TopicsGenerator:
         ]
         
         filtered_count = len(cluster_dict) - len(cluster_list)
-        logger.info(f"DIAGNOSTIC: Removed {filtered_count} immature clusters (threshold: {size_threshold})")
+        # logger.info(f"DIAGNOSTIC: Removed {filtered_count} immature clusters (threshold: {size_threshold})")
         
         # Log retained clusters
         retained_sizes = {getattr(cluster, 'id', f'cluster_{i}'): len(cluster.memory_list) for i, cluster in enumerate(cluster_list)}
-        logger.info(f"DIAGNOSTIC: After filtering, retained cluster sizes: {retained_sizes}")
+        # logger.info(f"DIAGNOSTIC: After filtering, retained cluster sizes: {retained_sizes}")
         
         return cluster_list
     

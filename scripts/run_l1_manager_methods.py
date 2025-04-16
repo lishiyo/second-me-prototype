@@ -586,9 +586,9 @@ def run_topics_for_shades():
         if existing_clusters:
             # Print example of first cluster structure
             sample_cluster = existing_clusters[0]
-            logger.info(f"DIAGNOSTIC: Sample existing cluster keys: {list(sample_cluster.keys())}")
-            logger.info(f"DIAGNOSTIC: Sample existing cluster ID: {sample_cluster.get('clusterId')}")
-            logger.info(f"DIAGNOSTIC: Sample existing cluster memory count: {len(sample_cluster.get('memoryList', []))}")
+            # logger.info(f"DIAGNOSTIC: Sample existing cluster keys: {list(sample_cluster.keys())}")
+            # logger.info(f"DIAGNOSTIC: Sample existing cluster ID: {sample_cluster.get('clusterId')}")
+            # logger.info(f"DIAGNOSTIC: Sample existing cluster memory count: {len(sample_cluster.get('memoryList', []))}")
         
         # Then, update with the new memories
         incremental_update_result = topics_generator.generate_topics_for_shades(
