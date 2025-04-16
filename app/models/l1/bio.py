@@ -151,17 +151,55 @@ class Bio:
     
     def to_str(self) -> str:
         """Convert to string representation for prompting"""
-        return f"""
-Content (Third Person):
-{self.content_third_view}
-
-Summary (Third Person):
-{self.summary_third_view}
-"""
+        global_bio_statement = ""
+        if self.is_raw_bio():
+            global_bio_statement += f"**[Origin Analysis]**\n{self.summary_third_view}\n"
+        
+        global_bio_statement += f"\n**[Current Shades]**\n"
+        for i, shade in enumerate(self.shades_list):
+            # Format each shade similar to how ShadeInfo.to_str() would do it
+            shade_str = f"**[Name]**: {shade.get('name', '')}\n"
+            shade_str += f"**[Description]**: {shade.get('summary', '')}\n"
+            
+            # Add timeline information if available
+            timelines = shade.get('timelines', [])
+            if timelines:
+                shade_str += "**[Timelines]**:\n"
+                for timeline in timelines:
+                    shade_str += f"- {timeline.get('created_at', '')}, {timeline.get('description', '')}\n"
+            
+            global_bio_statement += shade_str
+            global_bio_statement += "\n==============\n"
+        
+        return global_bio_statement
     
-    def complete_content(self) -> str:
-        """Get the complete content with summary"""
-        return f"{self.summary_third_view}\n\n{self.content_third_view}"
+    def complete_content(self, second_view: bool = False) -> str:
+        """
+        Get the complete content with summary.
+        
+        Args:
+            second_view: Whether to use second-person perspective content and summary
+            
+        Returns:
+            Complete formatted content
+        """
+        interests_preference_field = (
+            "\n### User's Interests and Preferences ###\n"
+        )
+        
+        # Add preview of each shade
+        for shade in self.shades_list:
+            interests_preference_field += f"- {shade.get('name', '')}: {shade.get('summary', '')}\n"
+        
+        # Use either third-person or second-person summary based on the second_view parameter
+        if not second_view:
+            conclusion_field = "\n### Conclusion ###\n" + self.summary_third_view
+        else:
+            conclusion_field = "\n### Conclusion ###\n" + self.summary_second_view
+        
+        return f"""## Comprehensive Analysis Report ##
+{interests_preference_field}
+{conclusion_field}"""
     
     # Add methods for compatibility with lpm_kernel
     def is_raw_bio(self) -> bool:

@@ -1,6 +1,7 @@
 import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
+import json
 
 import numpy as np
 
@@ -114,88 +115,70 @@ def sample_bio():
 
 @pytest.fixture
 def mock_llm_service():
-    """Return a mock LLM service with predefined responses."""
+    """Return a mock LLM service that provides deterministic responses for testing."""
     mock_service = MagicMock(spec=LLMService)
     
-    # Create a class to mock the OpenAI response structure with attribute access
-    class MockResponse:
-        def __init__(self, content):
-            self.choices = [MockChoice(content)]
-            self.model = "gpt-4o-mini"
-            self.usage = MockUsage()
-    
-    class MockChoice:
-        def __init__(self, content):
-            self.message = MockMessage(content)
-            self.index = 0
-            self.finish_reason = "stop"
-    
-    class MockMessage:
-        def __init__(self, content):
-            self.content = content
-            self.role = "assistant"
-    
-    class MockUsage:
-        def __init__(self):
-            self.prompt_tokens = 100
-            self.completion_tokens = 50
-            self.total_tokens = 150
-    
-    # Configure the mock to return different responses based on the prompt
-    def mock_chat_completion(messages, **kwargs):
-        system_content = messages[0]["content"] if len(messages) > 0 and "content" in messages[0] else ""
-        user_content = messages[1]["content"] if len(messages) > 1 and "content" in messages[1] else ""
+    # Configure the chat_completion method to return different outputs
+    # based on the prompt content
+    def mock_chat_completion(messages, model=None, temperature=None, max_tokens=None, 
+                           top_p=None, frequency_penalty=None, presence_penalty=None, 
+                           seed=None, response_format=None, timeout=None, **kwargs):
+        """Mock chat completion that returns different responses based on prompt content."""
+        system_content = ''
+        user_content = ''
         
-        # For test_gen_cluster_topic - look for specific test values in user_content
-        if '"Test Topic 1"' in user_content and '"Test Topic 2"' in user_content:
-            return MockResponse('{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}')
+        # Extract system and user content from messages
+        for msg in messages:
+            if msg['role'] == 'system':
+                system_content = msg['content']
+            elif msg['role'] == 'user':
+                user_content = msg['content']
         
-        # This is a catch-all for any _gen_cluster_topic call
-        elif user_content.startswith("Please generate the new topic and new tags"):
-            print("MATCHED: user_content starts with 'Please generate the new topic and new tags'")
-            return MockResponse('{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}')
+        # Create a response class with the expected attributes
+        class MockResponse:
+            def __init__(self, content):
+                self.choices = [MagicMock()]
+                self.choices[0].message = MagicMock()
+                self.choices[0].message.content = content
         
-        # Specific check for gen_cluster_topic function (directly match the strings from SYS_COMB and USR_COMB)
-        elif (system_content.startswith("You are a skilled wordsmith with extensive experience") and 
-            "crafting a new topic and a new set of tags" in system_content):
-            return MockResponse('{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}')
-        
-        # Other conditions (keep these as fallbacks)
-        elif system_content.startswith("You are a skilled wordsmith") and "knowledge chunk" in system_content:
-            # This is for SYS_TOPICS prompt
-            return MockResponse('{"topic": "Test Topic", "tags": ["test", "topic", "example"]}')
-        
-        elif "Topics: " in user_content and "Tags list: " in user_content:
-            # This matches the USR_COMB format
-            return MockResponse('{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}')
-        
-        elif "topic" in system_content.lower() and "tags" in user_content.lower():
-            return MockResponse('{"topic": "Test Topic", "tags": ["test", "topic", "example"]}')
-        
-        elif "shade" in system_content.lower() and "documents" in user_content.lower():
-            return MockResponse('{"name": "Test Shade", "summary": "This is a test shade summary", "confidence": 0.85}')
-        
-        elif "merge" in system_content.lower() and "shades" in user_content.lower():
-            return MockResponse('[{"name": "Merged Shade", "summary": "This is a merged shade summary", "confidence": 0.9}]')
-        
-        elif "biograph" in system_content.lower():
-            return MockResponse('{"content_third_view": "They are a test user.", "summary_third_view": "Test user.", "confidence": 0.9}')
-        
-        elif "perspective" in system_content.lower():
-            return MockResponse("I am a test user.")
-        
+        # Generate different responses based on the content
+        if 'biograph' in system_content.lower():
+            if 'status' in system_content.lower():
+                # Status biography response
+                content = json.dumps({
+                    "content_third_view": "They are a test user with several recent activities.",
+                    "summary_third_view": "Test user with recent activities.",
+                    "health_status": "They appear to be in good health."
+                })
+            else:
+                # Global biography response
+                content = json.dumps({
+                    "content_third_view": "They are a test user with various interests.",
+                    "summary_third_view": "They are a test user.",
+                    "confidence": 0.85
+                })
+        elif 'perspective' in system_content.lower():
+            if 'second person' in user_content.lower():
+                content = "You are a test user."
+            else:
+                content = "I am a test user."
+        elif 'shade' in system_content.lower():
+            # For shade generation
+            content = json.dumps({
+                "name": "Test Shade",
+                "icon": "🧪",
+                "description": "A test shade for unit testing",
+                "aspect": "Testing",
+                "content": "This is a detailed description of the test shade."
+            })
         else:
-            # For debugging purposes, print what we're receiving
-            print(f"UNMATCHED PROMPT - System: {system_content[:50]}... User: {user_content[:50]}...")
-            
             # Default response
-            return MockResponse('{"topic": "Default Topic", "tags": ["default", "tags"]}')
+            content = "This is a test response from the mock LLM service."
+        
+        return MockResponse(content)
     
+    # Assign the mock function to the chat_completion method
     mock_service.chat_completion.side_effect = mock_chat_completion
-    mock_service.call_with_retry.side_effect = mock_chat_completion
-    
-    # Mock for embedding generation
-    mock_service.generate_embeddings.return_value = [[0.1, 0.2, 0.3] for _ in range(10)]
     
     return mock_service
 

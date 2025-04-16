@@ -93,29 +93,6 @@ class L1Generator:
             new_memory_list
         )
     
-    def gen_global_biography(
-        self,
-        user_id: str,
-        old_profile: Bio,
-        cluster_list: List[Dict[str, Any]]
-    ) -> Bio:
-        """
-        Generate a global biography.
-        
-        Args:
-            user_id: User ID
-            old_profile: Existing biography with shades list
-            cluster_list: List of clusters
-            
-        Returns:
-            Generated global biography
-        """
-        return self.biography_generator.generate_global_biography(
-            user_id,
-            old_profile,
-            cluster_list
-        )
-    
     def gen_status_biography(
         self,
         user_id: str,
