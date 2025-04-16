@@ -23,6 +23,10 @@ def test_init(mock_llm_service, mock_wasabi_adapter):
     )
     assert hasattr(generator, 'llm_service')
     assert hasattr(generator, 'wasabi_adapter')
+    assert generator.llm_service == mock_llm_service
+    assert generator.wasabi_adapter == mock_wasabi_adapter
+    assert generator.bio_model_params['temperature'] == 0
+    assert generator.bio_model_params['max_tokens'] == 2000
 
 
 def test_generate_global_biography(biography_generator, sample_bio, sample_clusters):

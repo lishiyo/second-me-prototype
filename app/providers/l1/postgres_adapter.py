@@ -85,7 +85,7 @@ class PostgresAdapter:
         Args:
             user_id: The user ID.
             version: The version number.
-            status: The new status ("processing", "complete", "failed").
+            status: The new status ("processing", "completed", "failed").
             error: Optional error message if status is "failed".
             
         Returns:
@@ -105,7 +105,7 @@ class PostgresAdapter:
                 return False
             
             version_record.status = status
-            if status == "complete":
+            if status == "completed":
                 version_record.completed_at = datetime.utcnow()
             elif status == "failed":
                 version_record.error = error

@@ -116,7 +116,7 @@ class L1Manager:
             
             # 2.2 Generate chunk topics
             self.logger.info("Generating chunk topics...")
-            chunk_topics = self.topics_generator.generate_topics(user_id=user_id, notes=notes_list)
+            chunk_topics = self.topics_generator.generate_topics(notes_list=notes_list)
             self.logger.info(f"Generated chunk topics: {bool(chunk_topics)}")
             self.logger.debug(f"Chunk topics content: {chunk_topics}")
             
@@ -172,13 +172,13 @@ class L1Manager:
             self.logger.info(f"Generated global biography successfully")
             
             # 3. Store L1 data in Wasabi and PostgreSQL
-            self._store_l1_data(
-                user_id=user_id,
-                bio=bio,
-                clusters=clusters,
-                chunk_topics=chunk_topics,
-                shades=merged_shades_result.merge_shade_list if merged_shades_result.success else []
-            )
+            # self._store_l1_data(
+            #     user_id=user_id,
+            #     bio=bio,
+            #     clusters=clusters,
+            #     chunk_topics=chunk_topics,
+            #     shades=merged_shades_result.merge_shade_list if merged_shades_result.success else []
+            # )
             
             # 4. Build result object
             result = L1GenerationResult(
@@ -333,7 +333,7 @@ class L1Manager:
             # 1. Create a new version record for tracking
             latest_version = self.postgres_adapter.get_latest_version(user_id)
             new_version = (latest_version or 0) + 1
-            self.postgres_adapter.create_version(user_id, new_version, "processing")
+            self.postgres_adapter.create_version(user_id, new_version)
             
             # 2. Store topics/clusters in Weaviate and PostgreSQL
             if clusters and "clusterList" in clusters:
@@ -440,7 +440,7 @@ class L1Manager:
                     user_id=user_id,
                     version=new_version,
                     status="failed",
-                    error_message=str(e)
+                    error=str(e)
                 )
             
             raise

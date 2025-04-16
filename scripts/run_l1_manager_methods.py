@@ -1066,12 +1066,149 @@ def run_generate_shades():
         if resources:
             cleanup_resources(resources)
 
-def test_generate_l1_from_l0():
+def run_generate_l1_from_l0():
     """Test the full generation process with the generate_l1_from_l0 method"""
     logger.info("Starting test of generate_l1_from_l0...")
-    # This could be implemented later to test the full generation process
-    logger.info("Not implemented yet")
-    return True
+    
+    start_time = time.time()
+    resources = None
+    
+    try:
+        # Initialize the test environment and get resources
+        resources = initialize_l1_test_environment()
+        
+        if not resources:
+            logger.error("Failed to initialize test environment")
+            return False
+            
+        l1_manager = resources["l1_manager"]
+        user_id = resources["user_id"]
+        
+        #--------------------------------------------------------------------------
+        # 4. Run generate_l1_from_l0
+        #--------------------------------------------------------------------------
+        logger.info("STEP 4: Running generate_l1_from_l0...")
+        
+        # Run the full L1 generation process
+        l1_result = l1_manager.generate_l1_from_l0(user_id=user_id)
+        
+        if not l1_result:
+            logger.error("generate_l1_from_l0 returned None")
+            return False
+            
+        #--------------------------------------------------------------------------
+        # 5. Validate the L1GenerationResult
+        #--------------------------------------------------------------------------
+        logger.info("STEP 5: Validating L1GenerationResult...")
+        
+        # Check if L1GenerationResult has the expected structure
+        logger.info("Checking L1GenerationResult structure:")
+        
+        # Check bio
+        if l1_result.bio:
+            logger.info("✅ Bio exists")
+            
+            # Check bio properties
+            bio = l1_result.bio
+            logger.info("\nBio details:")
+            logger.info(f"  Content third view length: {len(bio.content_third_view)}")
+            logger.info(f"  Content second view length: {len(bio.content_second_view)}")
+            logger.info(f"  Content first view length: {len(bio.content_first_view)}")
+            logger.info(f"  Summary third view length: {len(bio.summary_third_view)}")
+            logger.info(f"  Summary second view length: {len(bio.summary_second_view)}")
+            logger.info(f"  Summary first view length: {len(bio.summary_first_view)}")
+            logger.info(f"  Confidence: {bio.confidence}")
+            logger.info(f"  Number of shades: {len(bio.shades_list)}")
+            
+            # Check compatibility properties
+            logger.info("\nBio compatibility properties:")
+            logger.info(f"  contentThirdView equals content_third_view: {bio.contentThirdView == bio.content_third_view}")
+            logger.info(f"  content equals content_second_view: {bio.content == bio.content_second_view}")
+            logger.info(f"  summaryThirdView equals summary_third_view: {bio.summaryThirdView == bio.summary_third_view}")
+            logger.info(f"  summary equals summary_second_view: {bio.summary == bio.summary_second_view}")
+            
+            # Sample content
+            logger.info("\nSample content:")
+            logger.info(f"  Summary third view: {bio.summary_third_view[:100]}...")
+            
+            # Test complete_content
+            content_third = bio.complete_content(second_view=False)
+            content_second = bio.complete_content(second_view=True)
+            logger.info("\nTesting complete_content:")
+            logger.info(f"  Third view includes 'Interests and Preferences': {'Interests and Preferences' in content_third}")
+            logger.info(f"  Third view includes summary_third_view: {bio.summary_third_view[:20] in content_third}")
+            logger.info(f"  Second view includes 'Interests and Preferences': {'Interests and Preferences' in content_second}")
+            logger.info(f"  Second view includes summary_second_view: {bio.summary_second_view[:20] in content_second}")
+        else:
+            logger.warning("❌ Bio is missing")
+        
+        # Check clusters
+        if l1_result.clusters and "clusterList" in l1_result.clusters:
+            cluster_list = l1_result.clusters["clusterList"]
+            logger.info("\n✅ Clusters exist")
+            logger.info(f"  Number of clusters: {len(cluster_list)}")
+            
+            if cluster_list:
+                # Log sample cluster
+                sample_cluster = cluster_list[0]
+                logger.info("\nSample cluster:")
+                logger.info(f"  Cluster ID: {sample_cluster.get('clusterId', 'N/A')}")
+                logger.info(f"  Topic: {sample_cluster.get('topic', 'N/A')}")
+                logger.info(f"  Tags: {sample_cluster.get('tags', [])}")
+                logger.info(f"  Memory count: {len(sample_cluster.get('memoryList', []))}")
+        else:
+            logger.warning("❌ Clusters are missing or empty")
+        
+        # Check chunk topics
+        if l1_result.chunk_topics:
+            logger.info("\n✅ Chunk topics exist")
+            logger.info(f"  Number of chunk topics: {len(l1_result.chunk_topics)}")
+            
+            if l1_result.chunk_topics:
+                # Log sample chunk topic
+                sample_topic_id = next(iter(l1_result.chunk_topics.keys()))
+                sample_topic = l1_result.chunk_topics[sample_topic_id]
+                logger.info("\nSample chunk topic:")
+                logger.info(f"  Topic ID: {sample_topic_id}")
+                
+                if isinstance(sample_topic, dict):
+                    logger.info(f"  Keys: {list(sample_topic.keys())}")
+                    logger.info(f"  Topic: {sample_topic.get('topic', 'N/A')}")
+                    logger.info(f"  Tags: {sample_topic.get('tags', [])}")
+                    logger.info(f"  Document count: {len(sample_topic.get('docIds', []))}")
+                else:
+                    logger.info(f"  Unexpected chunk topic type: {type(sample_topic)}")
+        else:
+            logger.warning("❌ Chunk topics are missing or empty")
+        
+        # Check generate_time
+        if l1_result.generate_time:
+            logger.info("\n✅ Generate time exists")
+            logger.info(f"  Generate time: {l1_result.generate_time}")
+        else:
+            logger.warning("❌ Generate time is missing")
+        
+        # Check to_dict method
+        try:
+            result_dict = l1_result.to_dict()
+            logger.info("\n✅ to_dict method works")
+            logger.info(f"  Dictionary keys: {list(result_dict.keys())}")
+        except Exception as e:
+            logger.error(f"❌ to_dict method failed: {str(e)}")
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"\n✅ generate_l1_from_l0 test completed successfully in {elapsed_time:.2f} seconds")
+        return True
+        
+    except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"❌ Error testing generate_l1_from_l0 after {elapsed_time:.2f} seconds: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+    finally:
+        # Clean up resources
+        if resources:
+            cleanup_resources(resources)
 
 if __name__ == "__main__":
     # Set up logger first
@@ -1089,13 +1226,15 @@ if __name__ == "__main__":
     # generate_topics_success = run_generate_topics()
 
     # Run the shade generation and merging test
-    logger.info("\n=== Starting shade generation and merging test ===")
-    shade_generation_success = run_generate_shades()
+    # logger.info("\n=== Starting shade generation and merging test ===")
+    # shade_generation_success = run_generate_shades()
 
-    method_to_test = shade_generation_success;
+    # Run the full L1 generation test
+    logger.info("\n=== Starting full L1 generation test (generate_l1_from_l0) ===")
+    l1_generation_success = run_generate_l1_from_l0()
     
     # Final results
-    if method_to_test:
+    if l1_generation_success:
         logger.info("All tests completed successfully!")
         sys.exit(0)
     else:

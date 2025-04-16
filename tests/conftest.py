@@ -142,34 +142,47 @@ def mock_llm_service():
                 self.choices[0].message.content = content
         
         # Generate different responses based on the content
-        if 'biograph' in system_content.lower():
-            if 'status' in system_content.lower():
-                # Status biography response
-                content = json.dumps({
-                    "content_third_view": "They are a test user with several recent activities.",
-                    "summary_third_view": "Test user with recent activities.",
-                    "health_status": "They appear to be in good health."
-                })
+        if 'clever and perceptive individual' in system_content.lower():
+            # Global biography response (SYS_BIO)
+            content = json.dumps({
+                "content_third_view": "They are a test user with various interests.",
+                "summary_third_view": "They are a test user.",
+                "confidence": 0.85
+            })
+        elif 'analyzing and organizing user\'s memory' in system_content.lower():
+            # Status biography response (SYS_STATUS)
+            content = json.dumps({
+                "content_third_view": "They are a test user with several recent activities.",
+                "summary_third_view": "Test user with recent activities.",
+                "health_status": "They appear to be in good health."
+            })
+        elif 'expert system for transforming narratives' in system_content.lower():
+            # Perspective shifting (SYS_PERSPECTIVE)
+            if 'second-person' in user_content.lower():
+                content = "You are a test user with various interests."
+            elif 'first-person' in user_content.lower():
+                content = "I am a test user with various interests."
             else:
-                # Global biography response
-                content = json.dumps({
-                    "content_third_view": "They are a test user with various interests.",
-                    "summary_third_view": "They are a test user.",
-                    "confidence": 0.85
-                })
+                content = "They are a test user with various interests."
         elif 'perspective' in system_content.lower():
-            if 'second person' in user_content.lower():
-                content = "You are a test user."
-            else:
-                content = "I am a test user."
-        elif 'shade' in system_content.lower():
+            # Common perspective shift system prompt
+            content = "You are a test user with various interests."
+        elif 'data analysis with psychology' in system_content.lower():
             # For shade generation
             content = json.dumps({
                 "name": "Test Shade",
+                "summary": "A test shade for unit testing",
+                "confidence": 0.85,
                 "icon": "🧪",
-                "description": "A test shade for unit testing",
                 "aspect": "Testing",
-                "content": "This is a detailed description of the test shade."
+                "content": "This is a detailed description of the test shade.",
+                "desc_second_view": "You are a tester with interests in QA.",
+                "desc_third_view": "They are a tester with interests in QA.",
+                "content_second_view": "You enjoy testing software and finding bugs.",
+                "content_third_view": "They enjoy testing software and finding bugs.",
+                "timelines": [
+                    {"createTime": "2023-05-15", "description": "Ran unit tests", "refId": "doc1"}
+                ]
             })
         else:
             # Default response
