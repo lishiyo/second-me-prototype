@@ -9,7 +9,7 @@ import os
 import time
 from typing import List, Dict, Any, Optional, Union
 
-import openai
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class LLMService:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        default_model: str = "gpt-4",
+        default_model: str = "gpt-4o-mini",
         max_retries: int = 3,
         retry_delay: int = 2
     ):
@@ -48,10 +48,23 @@ class LLMService:
         if not self.api_key:
             logger.warning("OpenAI API key not provided, API calls will fail")
             
-        openai.api_key = self.api_key
+        self.client = OpenAI(api_key=self.api_key)
         self.default_model = default_model
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        
+        # Default topic parameters for LLM calls that need them
+        # TODO: These are defaults for the topics generator, we should move them to the topics generator class
+        self.topic_params = {
+            "temperature": 0,
+            "max_tokens": 1500,
+            "top_p": 0,
+            "frequency_penalty": 0,
+            "presence_penalty": 0,
+            "timeout": 5,
+            "response_format": {"type": "json_object"},
+        }
+        self._top_p_adjusted = False  # Flag to track if top_p has been adjusted
     
     def chat_completion(
         self,
@@ -63,7 +76,7 @@ class LLMService:
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         stop: Optional[Union[str, List[str]]] = None
-    ) -> Dict[str, Any]:
+    ) -> Any:
         """
         Call the OpenAI Chat Completion API with retries.
         
@@ -78,7 +91,7 @@ class LLMService:
             stop: Stop sequences
             
         Returns:
-            API response dictionary
+            API response object
         """
         model = model or self.default_model
         
@@ -86,7 +99,7 @@ class LLMService:
             try:
                 logger.debug(f"Making OpenAI API call (attempt {attempt + 1}/{self.max_retries})")
                 
-                response = openai.ChatCompletion.create(
+                response = self.client.chat.completions.create(
                     model=model,
                     messages=messages,
                     temperature=temperature,
@@ -108,6 +121,74 @@ class LLMService:
                 else:
                     logger.error(f"All {self.max_retries} attempts failed")
                     raise
+    
+    def _fix_top_p_param(self, error_message: str) -> bool:
+        """
+        Fixes the top_p parameter if an API error indicates it's invalid.
+        
+        Some LLM providers don't accept top_p=0 and require values in specific ranges.
+        This function checks if the error is related to top_p and adjusts it to 0.001,
+        which is close enough to 0 to maintain deterministic behavior while satisfying
+        API requirements.
+        
+        Args:
+            error_message: Error message from the API response.
+            
+        Returns:
+            bool: True if top_p was adjusted, False otherwise.
+        """
+        if not self._top_p_adjusted and "top_p" in error_message.lower():
+            logger.warning("Fixing top_p parameter from 0 to 0.001 to comply with model API requirements")
+            self.topic_params["top_p"] = 0.001
+            self._top_p_adjusted = True
+            return True
+        return False
+    
+    def call_with_retry(self, messages: List[Dict[str, str]], **kwargs) -> Any:
+        """
+        Calls the LLM API with automatic retry for parameter adjustments.
+        
+        This function handles making API calls to the language model while
+        implementing automatic parameter fixes when errors occur. If the API
+        rejects the call due to invalid top_p parameter, it will adjust the
+        parameter value and retry the call once.
+        
+        Args:
+            messages: List of messages for the API call.
+            **kwargs: Additional parameters to pass to the API call.
+            
+        Returns:
+            API response object from the language model.
+            
+        Raises:
+            Exception: If the API call fails after all retries or for unrelated errors.
+        """
+        model = kwargs.pop('model', self.default_model)
+        
+        try:
+            return self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                **self.topic_params,
+                **kwargs
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"API Error: {error_msg}")
+            
+            # Try to fix top_p parameter if needed
+            if hasattr(e, 'response') and hasattr(e.response, 'status_code') and e.response.status_code == 400:
+                if self._fix_top_p_param(error_msg):
+                    logger.info("Retrying LLM API call with adjusted top_p parameter")
+                    return self.client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        **self.topic_params,
+                        **kwargs
+                    )
+            
+            # Re-raise the exception
+            raise
     
     def generate_embeddings(
         self,
@@ -131,13 +212,13 @@ class LLMService:
             try:
                 logger.debug(f"Generating embeddings for {len(texts)} texts (attempt {attempt + 1})")
                 
-                response = openai.Embedding.create(
+                response = self.client.embeddings.create(
                     model=model,
                     input=texts
                 )
                 
                 # Extract embeddings from response
-                embeddings = [data["embedding"] for data in response["data"]]
+                embeddings = [data.embedding for data in response.data]
                 
                 return embeddings
                 
@@ -175,7 +256,7 @@ class LLMService:
         
         response = self.chat_completion(messages, temperature=temperature)
         
-        return response["choices"][0]["message"]["content"]
+        return response.choices[0].message.content
     
     def extract_keywords(
         self,
@@ -202,7 +283,7 @@ class LLMService:
         response = self.chat_completion(messages, temperature=temperature)
         
         # Parse response
-        keywords_text = response["choices"][0]["message"]["content"]
+        keywords_text = response.choices[0].message.content
         keywords = [kw.strip() for kw in keywords_text.split(",")]
         
         return keywords 

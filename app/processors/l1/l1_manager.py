@@ -104,7 +104,7 @@ class L1Manager:
                 
             # 2. Generate L1 data
             
-            # 2.1 Generate topics
+            # 2.1 Generate topic clusters for shades
             self.logger.info("Generating clusters...")
             clusters = self.topics_generator.generate_topics_for_shades(
                 user_id=user_id,

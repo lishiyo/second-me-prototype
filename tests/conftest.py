@@ -117,56 +117,29 @@ def mock_llm_service():
     """Return a mock LLM service with predefined responses."""
     mock_service = MagicMock(spec=LLMService)
     
-    # Mock responses for different prompts
-    topic_response = {
-        "choices": [
-            {
-                "message": {
-                    "content": '{"topic": "Test Topic", "tags": ["test", "topic", "example"]}'
-                }
-            }
-        ]
-    }
+    # Create a class to mock the OpenAI response structure with attribute access
+    class MockResponse:
+        def __init__(self, content):
+            self.choices = [MockChoice(content)]
+            self.model = "gpt-4o-mini"
+            self.usage = MockUsage()
     
-    shade_response = {
-        "choices": [
-            {
-                "message": {
-                    "content": '{"name": "Test Shade", "summary": "This is a test shade summary", "confidence": 0.85}'
-                }
-            }
-        ]
-    }
+    class MockChoice:
+        def __init__(self, content):
+            self.message = MockMessage(content)
+            self.index = 0
+            self.finish_reason = "stop"
     
-    merged_shades_response = {
-        "choices": [
-            {
-                "message": {
-                    "content": '[{"name": "Merged Shade", "summary": "This is a merged shade summary", "confidence": 0.9}]'
-                }
-            }
-        ]
-    }
+    class MockMessage:
+        def __init__(self, content):
+            self.content = content
+            self.role = "assistant"
     
-    bio_response = {
-        "choices": [
-            {
-                "message": {
-                    "content": '{"content_third_view": "They are a test user.", "summary_third_view": "Test user.", "confidence": 0.9}'
-                }
-            }
-        ]
-    }
-    
-    perspective_response = {
-        "choices": [
-            {
-                "message": {
-                    "content": "I am a test user."
-                }
-            }
-        ]
-    }
+    class MockUsage:
+        def __init__(self):
+            self.prompt_tokens = 100
+            self.completion_tokens = 50
+            self.total_tokens = 150
     
     # Configure the mock to return different responses based on the prompt
     def mock_chat_completion(messages, **kwargs):
@@ -175,90 +148,51 @@ def mock_llm_service():
         
         # For test_gen_cluster_topic - look for specific test values in user_content
         if '"Test Topic 1"' in user_content and '"Test Topic 2"' in user_content:
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
-                        }
-                    }
-                ]
-            }
+            return MockResponse('{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}')
         
         # This is a catch-all for any _gen_cluster_topic call
         elif user_content.startswith("Please generate the new topic and new tags"):
             print("MATCHED: user_content starts with 'Please generate the new topic and new tags'")
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
-                        }
-                    }
-                ]
-            }
+            return MockResponse('{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}')
         
         # Specific check for gen_cluster_topic function (directly match the strings from SYS_COMB and USR_COMB)
         elif (system_content.startswith("You are a skilled wordsmith with extensive experience") and 
             "crafting a new topic and a new set of tags" in system_content):
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
-                        }
-                    }
-                ]
-            }
+            return MockResponse('{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}')
+        
         # Other conditions (keep these as fallbacks)
         elif system_content.startswith("You are a skilled wordsmith") and "knowledge chunk" in system_content:
             # This is for SYS_TOPICS prompt
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"topic": "Test Topic", "tags": ["test", "topic", "example"]}'
-                        }
-                    }
-                ]
-            }
+            return MockResponse('{"topic": "Test Topic", "tags": ["test", "topic", "example"]}')
+        
         elif "Topics: " in user_content and "Tags list: " in user_content:
             # This matches the USR_COMB format
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}'
-                        }
-                    }
-                ]
-            }
+            return MockResponse('{"topic": "Combined Test Topic", "tags": ["combined", "test", "topic"]}')
+        
         elif "topic" in system_content.lower() and "tags" in user_content.lower():
-            return topic_response
+            return MockResponse('{"topic": "Test Topic", "tags": ["test", "topic", "example"]}')
+        
         elif "shade" in system_content.lower() and "documents" in user_content.lower():
-            return shade_response
+            return MockResponse('{"name": "Test Shade", "summary": "This is a test shade summary", "confidence": 0.85}')
+        
         elif "merge" in system_content.lower() and "shades" in user_content.lower():
-            return merged_shades_response
+            return MockResponse('[{"name": "Merged Shade", "summary": "This is a merged shade summary", "confidence": 0.9}]')
+        
         elif "biograph" in system_content.lower():
-            return bio_response
+            return MockResponse('{"content_third_view": "They are a test user.", "summary_third_view": "Test user.", "confidence": 0.9}')
+        
         elif "perspective" in system_content.lower():
-            return perspective_response
+            return MockResponse("I am a test user.")
+        
         else:
             # For debugging purposes, print what we're receiving
             print(f"UNMATCHED PROMPT - System: {system_content[:50]}... User: {user_content[:50]}...")
             
             # Default response
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "content": '{"topic": "Default Topic", "tags": ["default", "tags"]}'
-                        }
-                    }
-                ]
-            }
+            return MockResponse('{"topic": "Default Topic", "tags": ["default", "tags"]}')
     
     mock_service.chat_completion.side_effect = mock_chat_completion
+    mock_service.call_with_retry.side_effect = mock_chat_completion
     
     # Mock for embedding generation
     mock_service.generate_embeddings.return_value = [[0.1, 0.2, 0.3] for _ in range(10)]

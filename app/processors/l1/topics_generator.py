@@ -99,6 +99,7 @@ class TopicsGenerator:
         self.default_cophenetic_distance = default_cophenetic_distance
         self.default_outlier_cutoff_distance = default_outlier_cutoff_distance
         self.default_cluster_merge_distance = default_cluster_merge_distance
+        self.threshold = 0.85  # Used for hierarchical clustering threshold similar to lpm_kernel version
     
     def generate_topics(self, notes_list: List[Note]) -> Dict[str, Any]:
         """
@@ -112,13 +113,25 @@ class TopicsGenerator:
         """
         logger.info(f"Processing {len(notes_list)} notes for topic generation")
         
-        # Log sample of notes for debugging
+        # Log sample of notes for debugging with more details like lpm_kernel version
         for i, note in enumerate(notes_list[:3]):  # Only log first 3 notes
             logger.info(f"\nNote {i + 1}:")
             logger.info(f"  ID: {note.id}")
             logger.info(f"  Title: {note.title}")
             logger.info(f"  Content: {note.content[:200]}...")  # only showing first 200 characters
             logger.info(f"  Number of chunks: {len(note.chunks)}")
+            # Add chunk details logging like lpm_kernel version
+            for j, chunk in enumerate(note.chunks[:2]):  # Only log first 2 chunks per note
+                logger.info(f"    Chunk {j + 1}:")
+                logger.info(f"      ID: {chunk.id}")
+                logger.info(f"      Document ID: {chunk.document_id}")
+                logger.info(f"      Content: {chunk.content[:100]}...")  # only showing first 100 characters
+                logger.info(f"      Has embedding: {chunk.embedding is not None}")
+                if chunk.embedding is not None:
+                    if isinstance(chunk.embedding, np.ndarray):
+                        logger.info(f"      Embedding shape: {chunk.embedding.shape}")
+                    elif isinstance(chunk.embedding, list):
+                        logger.info(f"      Embedding length: {len(chunk.embedding)}")
         
         # Perform cold start clustering
         topics_data = self._cold_start(notes_list)
@@ -755,43 +768,94 @@ class TopicsGenerator:
         """
         embedding_matrix, clean_chunks, all_note_ids = self._build_embedding_chunks(notes_list)
         logger.info(
-            f"Built embedding matrix with {len(embedding_matrix)} embeddings from {len(notes_list)} notes"
+            f"embedding_matrix shape: {len(embedding_matrix)}, clean_chunks length: {len(clean_chunks)}"
         )
         
         if len(embedding_matrix) == 0:
-            logger.warning("No chunks with embeddings found in the notes list")
-            return {}
+            logger.warning("No chunks found in the notes list")
+            return None  # Return None like lpm_kernel instead of empty dict
         
+        cluster_data = self._cold_clusters(clean_chunks, embedding_matrix)
+        return cluster_data
+    
+    def _cold_clusters(self, clean_chunks: List[Chunk], embedding_matrix: List[List[float]]) -> Dict[str, Dict[str, Any]]:
+        """
+        Generate clusters from scratch using hierarchical clustering.
+        
+        Args:
+            clean_chunks: List of cleaned chunks to process
+            embedding_matrix: Matrix of embeddings for the chunks
+            
+        Returns:
+            A dictionary containing cluster data
+        """
         # Generate topic labels for each chunk
         chunks_with_topics = self._generate_topic_from_chunks(clean_chunks)
         
         # If only one chunk, create a single cluster
         if len(embedding_matrix) <= 1:
             chunk = chunks_with_topics[0]
-            return {
-                "0": {
-                    "indices": [0],
-                    "docIds": [chunk.document_id],
-                    "contents": [chunk.content],
-                    "embedding": [chunk.embedding],
-                    "chunkIds": [chunk.id],
-                    "tags": chunk.tags if hasattr(chunk, 'tags') else [],
-                    "topic": chunk.topic if hasattr(chunk, 'topic') else "Unknown Topic",
-                    "topicId": 0,
-                    "recTimes": 0
-                }
+            cluster_data = {}
+            cluster_data["0"] = {  # Store with normalized cluster_id like lpm_kernel
+                "indices": [0],
+                "docIds": [chunk.document_id],
+                "contents": [chunk.content],
+                "embedding": [chunk.embedding],
+                "chunkIds": [chunk.id],
+                "tags": getattr(chunk, 'tags', []),
+                "topic": getattr(chunk, 'topic', "Unknown Topic"),
+                "topicId": 0,
+                "recTimes": 0
             }
+            return cluster_data
         
-        # Perform hierarchical clustering
-        clusters = self._hierarchical_clustering(
-            embedding_matrix, 
-            self.default_cophenetic_distance
-        )
+        # Perform hierarchical clustering using linkage and threshold like lpm_kernel
+        Z = linkage(embedding_matrix, method="complete", metric="cosine")
+        clusters = self._collect_cluster_indices(Z, self.threshold)
         
         # Generate detailed cluster data
         cluster_data = self._gen_cluster_data(clusters, chunks_with_topics)
         
         return cluster_data
+    
+    def _collect_cluster_indices(self, Z: np.ndarray, threshold: float) -> Dict[str, List[int]]:
+        """
+        Collect the leaf indices of each cluster from the linkage matrix.
+        
+        Args:
+            Z: Linkage matrix from hierarchical clustering
+            threshold: Distance threshold for forming clusters
+            
+        Returns:
+            A dictionary mapping cluster IDs to lists of point indices in each cluster
+        """
+        clusters = defaultdict(list)
+        n = Z.shape[0] + 1
+        cluster_id = n
+        
+        for i, merge in enumerate(Z):
+            left, right, dist, _ = merge
+            if dist < threshold:
+                if left < n:
+                    clusters[cluster_id].append(int(left))
+                else:
+                    clusters[cluster_id].extend(clusters.pop(left))
+
+                if right < n:
+                    clusters[cluster_id].append(int(right))
+                else:
+                    clusters[cluster_id].extend(clusters.pop(right))
+
+                cluster_id += 1
+
+        # Change the cluster_id to 0~len(clusters) like lpm_kernel
+        new_cluster_id = 0
+        new_clusters = {}
+        for tmp_id, indices in clusters.items():
+            new_clusters[str(new_cluster_id)] = indices  # Convert to string keys to match our existing format
+            new_cluster_id += 1
+        
+        return new_clusters
     
     def _build_embedding_chunks(self, notes_list: List[Note]) -> Tuple[List[List[float]], List[Chunk], List[str]]:
         """
@@ -803,56 +867,90 @@ class TopicsGenerator:
         Returns:
             A tuple containing (embedding_matrix, clean_chunks, all_note_ids)
         """
+        # First collect all chunks from all notes
         all_chunks = [chunk for note in notes_list for chunk in note.chunks]
+        logger.info(f"Found {len(all_chunks)} total chunks in {len(notes_list)} notes")
+        
+        # Filter to only chunks with embeddings
         all_chunks = [chunk for chunk in all_chunks if chunk.embedding is not None]
+        logger.info(f"Found {len(all_chunks)} chunks with non-None embeddings")
+        
+        # Get all note IDs
         all_note_ids = [note.id for note in notes_list]
         
+        # Initialize lists for clean data
         clean_chunks = []
-        embedding_matrix = []
+        clean_ids = []
+        clean_notes_lst = []
         
-        for chunk in all_chunks:
+        # Process chunks by note ID, similar to lpm_kernel approach
+        for note_id in all_note_ids:
+            # Get chunks for this note
+            tmp_chunks_set = [chunk for chunk in all_chunks if chunk.document_id == note_id]
+            
+            if len(tmp_chunks_set) == 0:
+                # Skip notes with no chunks with embeddings
+                continue
+            elif len(tmp_chunks_set) == 1:
+                # Single chunk case
+                clean_chunks.append(tmp_chunks_set[0])
+                clean_ids.append(note_id)
+                clean_notes_lst.append([note for note in notes_list if note.id == note_id][0])
+            else:
+                # Multiple chunks case
+                clean_ids.append(note_id)
+                clean_notes_lst.append([note for note in notes_list if note.id == note_id][0])
+                for chunk in tmp_chunks_set:
+                    clean_chunks.append(chunk)
+        
+        # Create embedding matrix with appropriate type conversion
+        embedding_matrix = []
+        for chunk in clean_chunks:
             if isinstance(chunk.embedding, list) and len(chunk.embedding) > 0:
-                clean_chunks.append(chunk)
                 embedding_matrix.append(chunk.embedding)
+            elif isinstance(chunk.embedding, np.ndarray) and chunk.embedding.size > 0:
+                embedding_matrix.append(chunk.embedding.tolist())
+        
+        logger.info(f"Created clean embedding matrix with {len(embedding_matrix)} embeddings from {len(clean_chunks)} clean chunks")
         
         return embedding_matrix, clean_chunks, all_note_ids
     
-    def _hierarchical_clustering(
-        self, 
-        embedding_matrix: List[List[float]], 
-        cophenetic_distance: float
-    ) -> Dict[str, List[int]]:
-        """
-        Perform hierarchical clustering on embeddings.
+    # def _hierarchical_clustering(
+    #     self, 
+    #     embedding_matrix: List[List[float]], 
+    #     cophenetic_distance: float
+    # ) -> Dict[str, List[int]]:
+    #     """
+    #     Perform hierarchical clustering on embeddings.
         
-        Args:
-            embedding_matrix: List of embeddings to cluster
-            cophenetic_distance: Distance threshold for creating clusters
+    #     Args:
+    #         embedding_matrix: List of embeddings to cluster
+    #         cophenetic_distance: Distance threshold for creating clusters
             
-        Returns:
-            A dictionary mapping cluster IDs to lists of point indices
-        """
-        # Convert to numpy array
-        embeddings = np.array(embedding_matrix)
+    #     Returns:
+    #         A dictionary mapping cluster IDs to lists of point indices
+    #     """
+    #     # Convert to numpy array
+    #     embeddings = np.array(embedding_matrix)
         
-        # Calculate pairwise cosine distances
-        distances = cdist(embeddings, embeddings, 'cosine')
+    #     # Calculate pairwise cosine distances
+    #     distances = cdist(embeddings, embeddings, 'cosine')
         
-        # Perform hierarchical clustering
-        linkage_matrix = linkage(distances, method='average')
+    #     # Perform hierarchical clustering
+    #     linkage_matrix = linkage(distances, method='average')
         
-        # Create flat clusters
-        labels = fcluster(linkage_matrix, cophenetic_distance, criterion='distance')
+    #     # Create flat clusters
+    #     labels = fcluster(linkage_matrix, cophenetic_distance, criterion='distance')
         
-        # Map points to clusters
-        clusters = {}
-        for i, label in enumerate(labels):
-            cluster_id = str(label - 1)  # 0-indexed
-            if cluster_id not in clusters:
-                clusters[cluster_id] = []
-            clusters[cluster_id].append(i)
+    #     # Map points to clusters
+    #     clusters = {}
+    #     for i, label in enumerate(labels):
+    #         cluster_id = str(label - 1)  # 0-indexed
+    #         if cluster_id not in clusters:
+    #             clusters[cluster_id] = []
+    #         clusters[cluster_id].append(i)
         
-        return clusters
+    #     return clusters
     
     def _generate_topic_from_chunks(self, chunks: List[Chunk]) -> List[Chunk]:
         """
@@ -874,15 +972,15 @@ class TopicsGenerator:
                         {"role": "system", "content": SYS_TOPICS},
                         {"role": "user", "content": USR_TOPICS.format(chunk=chunk.content)}
                     ]
-                    
-                    logger.info(f"Generating topic for chunk: {chunk.id} (Attempt {attempt + 1}/{max_retries})")
-                    
-                    response = self.llm_service.chat_completion(messages)
-                    content = response["choices"][0]["message"]["content"]
+                                        
+                    response = self.llm_service.call_with_retry(messages)
+                    content = response.choices[0].message.content
                     
                     topic, tags = self._parse_response(content, "topic", "tags")
                     chunk.topic = topic
                     chunk.tags = tags
+
+                    logger.info(f"Generated topic: {topic} and tags: {tags} for chunk: {chunk.id}")
                     break  # exit retry loop on success
                     
                 except Exception as e:
@@ -937,7 +1035,7 @@ class TopicsGenerator:
     
     def _gen_cluster_topic(self, c_tags: List[List[str]], c_topics: List[str]) -> Tuple[List[str], str]:
         """
-        Generate a combined topic and tags for a cluster.
+        Generate a combined topic and tags for a cluster via an LLM call.
         
         Args:
             c_tags: List of tags from chunks in the cluster
@@ -952,8 +1050,8 @@ class TopicsGenerator:
                 {"role": "user", "content": USR_COMB.format(topics=c_topics, tags=c_tags)}
             ]
             
-            response = self.llm_service.chat_completion(messages)
-            content = response["choices"][0]["message"]["content"]
+            response = self.llm_service.call_with_retry(messages)
+            content = response.choices[0].message.content
             
             new_topic, new_tags = self._parse_response(content, "topic", "tags")
             return new_tags, new_topic
@@ -976,23 +1074,34 @@ class TopicsGenerator:
             A tuple containing the values for the two keys
         """
         try:
-            # Try to parse as JSON directly
-            data = json.loads(content)
-            return data.get(key1, ""), data.get(key2, [])
-        except json.JSONDecodeError:
-            # If direct JSON parsing fails, try to extract JSON part
+            # Use the lpm_kernel parsing approach
+            spl = key1 + '":'
+            b = '{"' + spl + "".join(content.split(spl)[1:])
+            c = b.split("}")[0] + "}"
+            res_dict = json.loads(c)
+            
+            return res_dict[key1], res_dict[key2]
+        except Exception as e:
+            logger.error(f"Error parsing response: {str(e)}", exc_info=True)
+            # Fall back to our current approach if the lpm_kernel approach fails
             try:
-                # Find JSON-like structure in the text
-                start_idx = content.find('{')
-                end_idx = content.rfind('}') + 1
-                
-                if start_idx >= 0 and end_idx > start_idx:
-                    json_str = content[start_idx:end_idx]
-                    data = json.loads(json_str)
-                    return data.get(key1, ""), data.get(key2, [])
-                else:
-                    logger.warning(f"Could not find JSON in response: {content}")
-                    return "", []
-            except Exception as e:
-                logger.error(f"Error parsing response: {str(e)}", exc_info=True)
-                return "", [] 
+                # Try to parse as JSON directly
+                data = json.loads(content)
+                return data.get(key1, ""), data.get(key2, [])
+            except json.JSONDecodeError:
+                # If direct JSON parsing fails, try to extract JSON part
+                try:
+                    # Find JSON-like structure in the text
+                    start_idx = content.find('{')
+                    end_idx = content.rfind('}') + 1
+                    
+                    if start_idx >= 0 and end_idx > start_idx:
+                        json_str = content[start_idx:end_idx]
+                        data = json.loads(json_str)
+                        return data.get(key1, ""), data.get(key2, [])
+                    else:
+                        logger.warning(f"Could not find JSON in response: {content}")
+                        return "", []
+                except Exception as e:
+                    logger.error(f"Error parsing response: {str(e)}", exc_info=True)
+                    return "", [] 

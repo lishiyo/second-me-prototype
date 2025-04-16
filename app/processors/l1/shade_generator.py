@@ -215,7 +215,7 @@ class ShadeGenerator:
             
             logger.info(f"Generating shade for cluster with {len(cluster_notes)} notes")
             response = self.llm_service.chat_completion(messages)
-            content = response["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
             
             # Parse the response
             shade_data = self._parse_shade_response(content)
@@ -301,7 +301,7 @@ class ShadeGenerator:
             
             logger.info(f"Merging {len(shades)} shades")
             response = self.llm_service.chat_completion(messages)
-            content = response["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
             
             # Parse the response
             merged_shades_data = self._parse_merged_shades_response(content)
@@ -697,7 +697,7 @@ class ShadeGenerator:
             
             logger.info(f"Improving shade with {len(new_notes)} new notes")
             response = self.llm_service.chat_completion(messages)
-            content = response["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
             
             # Parse the response
             improved_data = self._parse_improved_shade_response(content)

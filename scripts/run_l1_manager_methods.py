@@ -623,6 +623,179 @@ def run_topics_for_shades():
         if resources:
             cleanup_resources(resources)
 
+def run_generate_topics():
+    """Test the generate_topics method of TopicsGenerator with real note data"""
+    logger.info("Starting test of generate_topics...")
+    
+    start_time = time.time()
+    resources = None
+    
+    try:
+        # Initialize the test environment and get resources
+        resources = initialize_l1_test_environment()
+        
+        if not resources:
+            logger.error("Failed to initialize test environment")
+            return False
+            
+        topics_generator = resources["topics_generator"]
+        notes_list = resources["notes_list"]
+        
+        if not notes_list:
+            logger.warning("No notes found. Cannot continue the test.")
+            return False
+        
+        #--------------------------------------------------------------------------
+        # 4. Test generate_topics with notes
+        #--------------------------------------------------------------------------
+        logger.info("STEP 4: Testing generate_topics with notes list...")
+        logger.info(f"Processing {len(notes_list)} notes for topic generation")
+        
+        # Debug note embeddings before calling the method
+        logger.info("Examining note embeddings:")
+        notes_with_embeddings = 0
+        chunks_with_embeddings = 0
+        total_chunks = 0
+        
+        for i, note in enumerate(notes_list[:5]):  # Check only the first 5 notes
+            has_embedding = note.embedding is not None
+            note_chunks_with_embeddings = sum(1 for chunk in note.chunks if chunk.embedding is not None)
+            total_note_chunks = len(note.chunks)
+            
+            logger.info(f"Note {i+1} (ID: {note.id}):")
+            logger.info(f"  Has embedding: {has_embedding}")
+            logger.info(f"  Chunks with embeddings: {note_chunks_with_embeddings}/{total_note_chunks}")
+            
+            if has_embedding:
+                notes_with_embeddings += 1
+                
+                # Log embedding details
+                if isinstance(note.embedding, np.ndarray):
+                    logger.info(f"  Embedding type: ndarray, shape: {note.embedding.shape}")
+                elif isinstance(note.embedding, list):
+                    logger.info(f"  Embedding type: list, length: {len(note.embedding)}")
+                else:
+                    logger.info(f"  Embedding type: {type(note.embedding)}")
+            
+            chunks_with_embeddings += note_chunks_with_embeddings
+            total_chunks += total_note_chunks
+            
+            # Check a sample chunk from each note if available
+            if note.chunks:
+                sample_chunk = note.chunks[0]
+                logger.info(f"  Sample chunk ID: {sample_chunk.id}")
+                
+                if sample_chunk.embedding is not None:
+                    if isinstance(sample_chunk.embedding, np.ndarray):
+                        logger.info(f"  Sample chunk embedding: ndarray, shape: {sample_chunk.embedding.shape}")
+                    elif isinstance(sample_chunk.embedding, list):
+                        logger.info(f"  Sample chunk embedding: list, length: {len(sample_chunk.embedding)}")
+                    else:
+                        logger.info(f"  Sample chunk embedding type: {type(sample_chunk.embedding)}")
+                else:
+                    logger.info("  Sample chunk has no embedding")
+        
+        logger.info(f"Summary: {notes_with_embeddings}/{len(notes_list)} of first 5 notes and {chunks_with_embeddings}/{total_chunks} chunks have embeddings")
+        
+        # Generate topics from notes
+        topics_data = topics_generator.generate_topics(notes_list)
+        
+        # Check result structure and log results
+        if not topics_data:
+            logger.warning("No topics generated. This could be an error or there might be not enough data.")
+            logger.info("\n⚠️ generate_topics test completed, but no data was generated")
+            return True
+            
+        # Count the number of topics/clusters
+        topic_count = len(topics_data)
+        logger.info(f"Generated {topic_count} topics")
+        
+        # Analyze and log the structure of the results
+        logger.info("\nAnalyzing topic generation results:")
+        
+        # Check what keys are in the topics_data dictionary
+        logger.info(f"Result structure: {type(topics_data)}")
+        
+        if isinstance(topics_data, dict):
+            logger.info(f"Result keys: {list(topics_data.keys())[:10] if len(topics_data) > 10 else list(topics_data.keys())}")
+            
+            # Display information about the first few topics
+            for i, (topic_id, topic_data) in enumerate(list(topics_data.items())[:3]):  # Show first 3 topics
+                logger.info(f"\nTopic {i+1} (ID: {topic_id}):")
+                
+                # Extract and log topic details
+                if isinstance(topic_data, dict):
+                    # Log the keys in the topic data
+                    logger.info(f"  Data keys: {list(topic_data.keys())}")
+                    
+                    # Log common topic properties if they exist
+                    logger.info(f"  Topic: {topic_data.get('topic', 'N/A')}")
+                    logger.info(f"  Tags: {topic_data.get('tags', [])}")
+                    
+                    # Log content statistics
+                    content_list = topic_data.get('contents', [])
+                    doc_ids = topic_data.get('docIds', [])
+                    logger.info(f"  Number of documents: {len(doc_ids)}")
+                    logger.info(f"  Number of content items: {len(content_list)}")
+                    
+                    # Log sample content if available
+                    if content_list and len(content_list) > 0:
+                        sample_content = content_list[0]
+                        logger.info(f"  Sample content: {sample_content[:100]}..." if len(sample_content) > 100 else sample_content)
+                else:
+                    logger.info(f"  Unexpected topic data type: {type(topic_data)}")
+        else:
+            logger.warning(f"Unexpected result type: {type(topics_data)}")
+        
+        # Compare with generate_topics_for_shades results
+        logger.info("\nComparing with generate_topics_for_shades results:")
+        
+        # Get results from generate_topics_for_shades for comparison
+        shades_result = topics_generator.generate_topics_for_shades(
+            user_id=resources["user_id"],
+            old_cluster_list=[],
+            old_outlier_memory_list=[],
+            new_memory_list=resources["memory_list"]
+        )
+        
+        # Log comparison metrics
+        shades_cluster_count = len(shades_result.get("clusterList", []))
+        logger.info(f"generate_topics produced {topic_count} topics")
+        logger.info(f"generate_topics_for_shades produced {shades_cluster_count} clusters")
+        
+        # Show sample of both for comparison
+        if shades_cluster_count > 0 and topic_count > 0:
+            logger.info("\nSample comparison:")
+            
+            # Sample from generate_topics_for_shades
+            sample_shade_cluster = shades_result.get("clusterList", [])[0]
+            logger.info("Sample from generate_topics_for_shades:")
+            logger.info(f"  ID: {sample_shade_cluster.get('clusterId', 'N/A')}")
+            logger.info(f"  Topic: {sample_shade_cluster.get('topic', 'N/A')}")
+            logger.info(f"  Memory count: {len(sample_shade_cluster.get('memoryList', []))}")
+            
+            # Sample from generate_topics
+            if isinstance(topics_data, dict) and len(topics_data) > 0:
+                sample_topic_id, sample_topic_data = next(iter(topics_data.items()))
+                logger.info("Sample from generate_topics:")
+                logger.info(f"  ID: {sample_topic_id}")
+                logger.info(f"  Topic: {sample_topic_data.get('topic', 'N/A')}")
+                logger.info(f"  Document count: {len(sample_topic_data.get('docIds', []))}")
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"\n✅ generate_topics test completed successfully in {elapsed_time:.2f} seconds")
+        return True
+        
+    except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"❌ Error testing generate_topics after {elapsed_time:.2f} seconds: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+    finally:
+        # Clean up resources
+        if resources:
+            cleanup_resources(resources)
+
 def test_generate_l1_from_l0():
     """Test the full generation process with the generate_l1_from_l0 method"""
     logger.info("Starting test of generate_l1_from_l0...")
@@ -638,10 +811,14 @@ if __name__ == "__main__":
     # notes_test_success = run_extract_notes_from_l0()
     
     # Run the topics for shades test
-    logger.info("\n=== Starting topics for shades test ===")
-    topics_test_success = run_topics_for_shades()
+    # logger.info("\n=== Starting topics for shades test ===")
+    # topics_test_success = run_topics_for_shades()
+    
+    # Run the generate_topics test
+    logger.info("\n=== Starting generate_topics test ===")
+    generate_topics_success = run_generate_topics()
 
-    method_to_test = topics_test_success;
+    method_to_test = generate_topics_success;
     
     # Final results
     if method_to_test:

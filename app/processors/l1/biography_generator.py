@@ -179,7 +179,7 @@ class BiographyGenerator:
             
             logger.info(f"Generating global biography for user {user_id}")
             response = self.llm_service.chat_completion(messages)
-            content = response["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
             
             # Parse the response
             bio_data = self._parse_bio_response(content)
@@ -244,7 +244,7 @@ class BiographyGenerator:
             
             logger.info(f"Generating status biography for user {user_id}")
             response = self.llm_service.chat_completion(messages)
-            content = response["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
             
             # Parse the response
             bio_data = self._parse_status_bio_response(content)
@@ -354,7 +354,7 @@ class BiographyGenerator:
             ]
             
             response = self.llm_service.chat_completion(messages)
-            shifted_text = response["choices"][0]["message"]["content"]
+            shifted_text = response.choices[0].message.content
             
             return shifted_text
             
