@@ -953,7 +953,7 @@ Recent Memories:
             data = json.loads(content_fixed)
             return {
                 "name": data.get("name", "Unknown Shade"),
-                "summary": data.get("summary", ""),
+                "summary": data.get("summary", "") or "",  # Convert None to empty string
                 "confidence": data.get("confidence", 0.0),
                 "timelines": data.get("timelines", [])
             }
@@ -971,7 +971,7 @@ Recent Memories:
                     data = json.loads(json_str)
                     return {
                         "name": data.get("name", "Unknown Shade"),
-                        "summary": data.get("summary", ""),
+                        "summary": data.get("summary", "") or "",  # Convert None to empty string
                         "confidence": data.get("confidence", 0.0),
                         "timelines": data.get("timelines", [])
                     }
@@ -1001,7 +1001,7 @@ Recent Memories:
                 return [
                     {
                         "name": shade.get("name", "Unknown Shade"),
-                        "summary": shade.get("summary", ""),
+                        "summary": shade.get("summary", "") or "",  # Convert None to empty string
                         "confidence": shade.get("confidence", 0.0),
                         "timelines": shade.get("timelines", [])
                     }
@@ -1023,7 +1023,7 @@ Recent Memories:
                     return [
                         {
                             "name": shade.get("name", "Unknown Shade"),
-                            "summary": shade.get("summary", ""),
+                            "summary": shade.get("summary", "") or "",  # Convert None to empty string
                             "confidence": shade.get("confidence", 0.0),
                             "timelines": shade.get("timelines", [])
                         }
@@ -1353,8 +1353,8 @@ Recent Memories:
             # Try to parse as JSON directly
             data = json.loads(content_fixed)
             return {
-                "improved_name": data.get("improved_name", ""),
-                "improved_summary": data.get("improved_summary", ""),
+                "improved_name": data.get("improved_name", "") or "",
+                "improved_summary": data.get("improved_summary", "") or "",
                 "improved_confidence": data.get("improved_confidence", 0.0),
                 "new_timelines": data.get("new_timelines", [])
             }
@@ -1371,8 +1371,8 @@ Recent Memories:
                     json_str = re.sub(r'\bNone\b', 'null', json_str)
                     data = json.loads(json_str)
                     return {
-                        "improved_name": data.get("improved_name", ""),
-                        "improved_summary": data.get("improved_summary", ""),
+                        "improved_name": data.get("improved_name", "") or "",
+                        "improved_summary": data.get("improved_summary", "") or "",
                         "improved_confidence": data.get("improved_confidence", 0.0),
                         "new_timelines": data.get("new_timelines", [])
                     }
