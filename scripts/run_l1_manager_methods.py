@@ -31,8 +31,46 @@ from app.processors.l1.shade_merger import ShadeMerger
 from app.processors.l1.biography_generator import BiographyGenerator
 from app.services.llm_service import LLMService
 
-# Setup logger
-logger = setup_logger("run_l1_manager_methods")
+# Setup logging for the entire application
+def setup_global_logging():
+    """Configure global logging to capture logs from all components"""
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Create a formatter for consistent log format
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)  # Changed to DEBUG to capture all diagnostic output
+    console_handler.setFormatter(formatter)
+    
+    # File handler
+    file_handler = logging.FileHandler('run_l1_manager_methods.log')
+    file_handler.setLevel(logging.DEBUG)  # Capture everything in the file
+    file_handler.setFormatter(formatter)
+    
+    # Clear any existing handlers
+    if root_logger.handlers:
+        root_logger.handlers.clear()
+    
+    # Add handlers
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+    
+    # Configure specific loggers
+    # Make sure they propagate to the root logger
+    for logger_name in ['app.processors.l1.topics_generator', 'app.processors.l1.l1_manager', 'app.processors.l1.shade_generator']:
+        module_logger = logging.getLogger(logger_name)
+        module_logger.propagate = True
+        # No need to add handlers to these loggers as they will propagate to root
+    
+    return root_logger
+
+# Setup global logging
+logger = setup_global_logging()
+logger.info("=== Global logging initialized ===")
 
 def verify_environment():
     """Verify that all environment variables are set correctly"""
@@ -250,8 +288,8 @@ def initialize_l1_test_environment():
                         value = emb_array.item()
                         # Check if the scalar is actually a complex object
                         if not (isinstance(value, (int, float, str)) and not isinstance(value, bool)):
-                            logger.warning(f"Memory {memory.get('memoryId')} has non-numeric scalar embedding: {str(value)[:100]}...")
-                            memory['embedding'] = [0.0] * 10  # Create dummy vector
+                            # actualy this should fail the test
+                            raise Exception(f"Memory {memory.get('memoryId')} has non-numeric scalar embedding: {str(value)[:100]}...")
                         else:
                             logger.warning(f"Memory {memory.get('memoryId')} has scalar embedding: {value}. Fixing...")
                             memory['embedding'] = [float(value)] * 5  # Create small vector
@@ -264,8 +302,7 @@ def initialize_l1_test_environment():
             except Exception as e:
                 logger.warning(f"Error processing embedding for memory {memory.get('memoryId')}: {str(e)}")
                 logger.warning(f"Embedding type: {type(embedding)}, sample: {str(embedding)[:100]}...")
-                # Create a dummy embedding
-                memory['embedding'] = [0.0] * 10  # Create dummy vector
+                raise Exception(f"Memory {memory.get('memoryId')} has non-numeric scalar embedding: {str(value)[:100]}...")
                 
         if scalar_embeddings > 0 or missing_embeddings > 0 or short_embeddings > 0 or dict_embeddings > 0:
             logger.warning(f"Embedding issues found: {scalar_embeddings} scalar, {missing_embeddings} missing, {short_embeddings} short, {dict_embeddings} dictionary, {good_embeddings} good")
@@ -520,9 +557,9 @@ def run_topics_for_shades():
         
         for i, cluster in enumerate(cold_start_result.get("clusterList", [])[:3]):  # Show first 3 clusters
             logger.info(f"\nCluster {i+1}:")
-            logger.info(f"  ID: {cluster.get('id')}")
-            logger.info(f"  Name: {cluster.get('name')}")
-            logger.info(f"  Memory count: {len(cluster.get('memory_list', []))}")
+            logger.info(f"  ID: {cluster.get('clusterId')}")
+            logger.info(f"  Name: {cluster.get('topic')}")
+            logger.info(f"  Memory count: {len(cluster.get('memoryList', []))}")
         
         #--------------------------------------------------------------------------
         # 5. Test incremental update with existing clusters
@@ -542,10 +579,21 @@ def run_topics_for_shades():
             new_memory_list=existing_memory_list
         )
         
+        # Log details about existing clusters
+        existing_clusters = existing_clusters_result.get("clusterList", [])
+        logger.info(f"DIAGNOSTIC: Got {len(existing_clusters)} existing clusters for incremental update")
+        
+        if existing_clusters:
+            # Print example of first cluster structure
+            sample_cluster = existing_clusters[0]
+            logger.info(f"DIAGNOSTIC: Sample existing cluster keys: {list(sample_cluster.keys())}")
+            logger.info(f"DIAGNOSTIC: Sample existing cluster ID: {sample_cluster.get('clusterId')}")
+            logger.info(f"DIAGNOSTIC: Sample existing cluster memory count: {len(sample_cluster.get('memoryList', []))}")
+        
         # Then, update with the new memories
         incremental_update_result = topics_generator.generate_topics_for_shades(
             user_id=user_id,
-            old_cluster_list=existing_clusters_result.get("clusterList", []),
+            old_cluster_list=existing_clusters,
             old_outlier_memory_list=existing_clusters_result.get("outlierMemoryList", []),
             new_memory_list=new_memory_list
         )
@@ -557,9 +605,9 @@ def run_topics_for_shades():
         
         for i, cluster in enumerate(incremental_update_result.get("clusterList", [])[:3]):  # Show first 3 clusters
             logger.info(f"\nCluster {i+1}:")
-            logger.info(f"  ID: {cluster.get('id')}")
-            logger.info(f"  Name: {cluster.get('name')}")
-            logger.info(f"  Memory count: {len(cluster.get('memory_list', []))}")
+            logger.info(f"  ID: {cluster.get('clusterId')}")
+            logger.info(f"  Name: {cluster.get('topic')}")
+            logger.info(f"  Memory count: {len(cluster.get('memoryList', []))}")
         
         elapsed_time = time.time() - start_time
         logger.info(f"\n✅ generate_topics_for_shades test completed successfully in {elapsed_time:.2f} seconds")

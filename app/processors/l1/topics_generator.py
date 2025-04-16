@@ -17,6 +17,7 @@ from scipy.spatial.distance import cdist
 from collections import deque, defaultdict
 import math
 import itertools
+import uuid
 
 from app.models.l1.note import Note, Chunk
 from app.models.l1.topic import Memory, Cluster  # Import our Cluster and Memory classes
@@ -81,9 +82,9 @@ class TopicsGenerator:
     def __init__(
         self,
         llm_service: LLMService,
-        default_cophenetic_distance: float = 0.7,
+        default_cophenetic_distance: float = 1.0,
         default_outlier_cutoff_distance: float = 0.9,
-        default_cluster_merge_distance: float = 0.75
+        default_cluster_merge_distance: float = 0.5
     ):
         """
         Initialize the TopicsGenerator.
@@ -149,10 +150,33 @@ class TopicsGenerator:
         Returns:
             A dictionary containing updated cluster list and outlier memory list
         """
+        # Log input data
+        logger.info(f"DIAGNOSTIC INPUT: User ID: {user_id}")
+        logger.info(f"DIAGNOSTIC INPUT: Old clusters count: {len(old_cluster_list)}")
+        logger.info(f"DIAGNOSTIC INPUT: Old outliers count: {len(old_outlier_memory_list)}")
+        logger.info(f"DIAGNOSTIC INPUT: New memories count: {len(new_memory_list)}")
+        
+        # Check a sample of the memory structure
+        if new_memory_list:
+            sample_memory = new_memory_list[0]
+            logger.info(f"DIAGNOSTIC INPUT: Sample memory keys: {list(sample_memory.keys())}")
+            if "memoryId" in sample_memory:
+                logger.info(f"DIAGNOSTIC INPUT: Sample memory ID: {sample_memory['memoryId']}")
+            if "embedding" in sample_memory:
+                embedding = sample_memory["embedding"]
+                if isinstance(embedding, list):
+                    logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: list, length: {len(embedding)}")
+                elif isinstance(embedding, np.ndarray):
+                    logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: ndarray, shape: {embedding.shape}")
+                else:
+                    logger.info(f"DIAGNOSTIC INPUT: Sample embedding type: {type(embedding)}")
+        
         # Use default values if not provided
         cophenetic_distance = cophenetic_distance or self.default_cophenetic_distance
         outlier_cutoff_distance = outlier_cutoff_distance or self.default_outlier_cutoff_distance
         cluster_merge_distance = cluster_merge_distance or self.default_cluster_merge_distance
+        
+        logger.info(f"DIAGNOSTIC PARAMS: cophenetic_distance={cophenetic_distance}, outlier_cutoff_distance={outlier_cutoff_distance}, cluster_merge_distance={cluster_merge_distance}")
         
         logger.info(f"Generating topics for shades with {len(new_memory_list)} new memories for user {user_id}")
         
@@ -207,11 +231,23 @@ class TopicsGenerator:
         embedding = memory_data.get("embedding", [])
         metadata = {k: v for k, v in memory_data.items() if k not in ["memoryId", "embedding"]}
         
-        return Memory(
+        # Diagnostic check for embedding shape
+        if isinstance(embedding, list) and embedding:
+            logger.debug(f"DIAGNOSTIC: Memory {memory_id} has embedding list of length {len(embedding)}")
+        elif isinstance(embedding, np.ndarray):
+            logger.debug(f"DIAGNOSTIC: Memory {memory_id} has numpy embedding of shape {embedding.shape}")
+        elif embedding is None:
+            logger.warning(f"DIAGNOSTIC: Memory {memory_id} has None embedding")
+        else:
+            logger.warning(f"DIAGNOSTIC: Memory {memory_id} has unexpected embedding type: {type(embedding)}")
+        
+        memory = Memory(
             memory_id=memory_id,
             embedding=embedding,
             metadata=metadata
         )
+        
+        return memory
     
     def _convert_to_cluster_object(self, cluster_data: Dict[str, Any]) -> Cluster:
         """
@@ -223,23 +259,57 @@ class TopicsGenerator:
         Returns:
             Cluster object
         """
-        cluster_id = cluster_data.get("clusterId", "")
+        # Log full input cluster data for debugging
+        logger.info(f"DIAGNOSTIC: Converting cluster data keys: {list(cluster_data.keys())}")
         
+        # Extract clusterId
+        cluster_id = cluster_data.get("clusterId", "")
+        if not cluster_id:
+            logger.warning(f"DIAGNOSTIC: Missing clusterId in cluster data")
+            logger.warning(f"DIAGNOSTIC: Full cluster data: {cluster_data}")
+            # Try to provide a fallback ID
+            cluster_id = str(uuid.uuid4())[:8]
+            logger.warning(f"DIAGNOSTIC: Generated fallback ID: {cluster_id}")
+        else:
+            logger.info(f"DIAGNOSTIC: Found clusterId: {cluster_id}")
+        
+        # Extract memory list
         memory_list = []
-        for memory_data in cluster_data.get("memoryList", []):
-            memory_list.append(self._convert_to_memory_object(memory_data))
+        memory_list_data = cluster_data.get("memoryList", [])
+        logger.info(f"DIAGNOSTIC: Found {len(memory_list_data)} memories in memory list")
+        
+        # Convert each memory in the memory list
+        for memory_data in memory_list_data:
+            try:
+                memory = self._convert_to_memory_object(memory_data)
+                memory_list.append(memory)
+            except Exception as e:
+                logger.error(f"DIAGNOSTIC: Error converting memory: {str(e)}")
+                logger.error(traceback.format_exc())
         
         # Get other properties
         name = cluster_data.get("topic", "Unknown Topic")
-        metadata = {
-            "tags": cluster_data.get("tags", [])
-        }
+        tags = cluster_data.get("tags", [])
+        metadata = {"tags": tags}
         
+        # Add any other metadata
+        if "mergeList" in cluster_data:
+            metadata["merge_list"] = cluster_data.get("mergeList", [])
+        
+        # Check for center embedding
+        center_embedding = cluster_data.get("centerEmbedding", None)
+        if center_embedding is not None:
+            logger.info(f"DIAGNOSTIC: Found center embedding of type {type(center_embedding)}")
+        
+        logger.info(f"DIAGNOSTIC: Created cluster {cluster_id} with {len(memory_list)} memories and name: {name}")
+        
+        # Create the cluster object
         cluster = Cluster(
             id=cluster_id,
             name=name,
             memory_list=memory_list,
-            metadata=metadata
+            metadata=metadata,
+            center_embedding=center_embedding
         )
         
         return cluster
@@ -262,25 +332,38 @@ class TopicsGenerator:
             A tuple containing (generated_clusters, outlier_memories)
         """
         if not memory_list:
+            logger.info("DIAGNOSTIC: memory_list is empty, returning empty clusters and outliers")
             return [], []
+            
+        logger.info(f"DIAGNOSTIC: _clusters_initial_strategy called with {len(memory_list)} memories and cophenetic_distance={cophenetic_distance}")
             
         # Log memory information for debugging
         for memory in memory_list[:3]:  # Only log a few
-            logger.info(f"Memory ID: {memory.memory_id}, Embedding shape: {np.array(memory.embedding).shape if memory.embedding else 'None'}")
+            logger.info(f"Memory ID: {memory.memory_id}, Embedding shape: {np.array(memory.embedding).shape if memory.embedding is not None else 'None'}")
         
         # Create matrix of embeddings for clustering
         memory_embeddings = [np.array(memory.embedding) for memory in memory_list]
+        logger.info(f"DIAGNOSTIC: Created embedding matrix with {len(memory_embeddings)} embeddings")
         
         # Perform hierarchical clustering
         if len(memory_embeddings) == 1:
             # If only one memory, create a single cluster
+            logger.info("DIAGNOSTIC: Only one memory, creating single cluster")
             clusters = np.array([1])
         else:
             # Calculate linkage and get flat clusters
-            linked = linkage(memory_embeddings, method="ward")
-            clusters = fcluster(linked, cophenetic_distance, criterion="distance")
+            try:
+                logger.info("DIAGNOSTIC: Performing hierarchical clustering")
+                linked = linkage(memory_embeddings, method="ward")
+                clusters = fcluster(linked, cophenetic_distance, criterion="distance")
+                logger.info(f"DIAGNOSTIC: Generated {len(np.unique(clusters))} clusters from {len(memory_embeddings)} embeddings")
+            except Exception as e:
+                logger.error(f"DIAGNOSTIC: Error in clustering: {str(e)}")
+                logger.error(traceback.format_exc())
+                return [], memory_list  # Return all as outliers if clustering fails
         
         labels = clusters.tolist()
+        logger.info(f"DIAGNOSTIC: Cluster labels distribution: {np.bincount(clusters)}")
         
         # Map memories to clusters
         cluster_dict = {}
@@ -292,14 +375,31 @@ class TopicsGenerator:
                     name="New Cluster", # TODO this is unnecessary
                     metadata={"is_new": True}
                 )
+                logger.info(f"DIAGNOSTIC: Created new cluster with ID {label}")
             cluster_dict[label].memory_list.append(memory)
         
+        logger.info(f"DIAGNOSTIC: Created {len(cluster_dict)} clusters from labels")
+        
+        # Log cluster details before filtering
+        for label, cluster in list(cluster_dict.items())[:3]:
+            logger.info(f"DIAGNOSTIC: Pre-filter cluster {label} - ID: {cluster.id}, Name: {cluster.name}, Memory count: {len(cluster.memory_list)}")
+        
         # Remove small clusters
+        size_threshold_before = size_threshold
         cluster_list = self._remove_immature_clusters(cluster_dict, size_threshold)
         
+        logger.info(f"DIAGNOSTIC: After filtering, {len(cluster_list)} clusters remain (threshold was {size_threshold_before})")
+        
         # Prune outliers from clusters
+        for i, cluster in enumerate(cluster_list[:3]):
+            logger.info(f"DIAGNOSTIC: Before pruning, cluster {i+1} has {len(cluster.memory_list)} memories")
+            
         for cluster in cluster_list:
             self._prune_outliers_from_cluster(cluster)
+        
+        # Log after pruning
+        for i, cluster in enumerate(cluster_list[:3]):
+            logger.info(f"DIAGNOSTIC: After pruning, cluster {i+1} (ID {cluster.id}) has {len(cluster.memory_list)} memories")
         
         # Identify in-cluster and outlier memories
         in_cluster_memory_ids = [
@@ -314,9 +414,13 @@ class TopicsGenerator:
             if memory.memory_id not in in_cluster_memory_ids
         ]
         
-        # logger.info(f"Initial clustering: {len(cluster_list)} clusters, {len(outlier_memory_list)} outliers")
-        logger.info(f"cluster_list: {cluster_list}")
-        logger.info(f"outlier_memory_list: {outlier_memory_list}")
+        logger.info(f"DIAGNOSTIC: Final stats - {len(cluster_list)} clusters, {len(in_cluster_memory_ids)} in-cluster memories, {len(outlier_memory_list)} outliers")
+        
+        # Log final clusters
+        for i, cluster in enumerate(cluster_list[:3]):
+            logger.info(f"DIAGNOSTIC: Final cluster {i+1} - ID: {cluster.id}, Name: {cluster.name}, Memory count: {len(cluster.memory_list)}")
+            if cluster.memory_list:
+                logger.info(f"DIAGNOSTIC: Sample memory ID in cluster: {cluster.memory_list[0].memory_id}")
         
         return cluster_list, outlier_memory_list
     
@@ -332,12 +436,22 @@ class TopicsGenerator:
             List of clusters that meet the size threshold
         """
         if not cluster_dict:
+            logger.info("DIAGNOSTIC: _remove_immature_clusters called with empty cluster_dict")
             return []
             
         # Calculate size threshold if not provided
         if not size_threshold:
             max_cluster_size = max(len(cluster.memory_list) for cluster in cluster_dict.values())
-            size_threshold = math.sqrt(max_cluster_size)
+            # Use a smaller threshold - square root times 0.8 instead of just square root
+            # This will allow smaller clusters to be kept
+            size_threshold = math.sqrt(max_cluster_size) * 0.8
+            logger.info(f"DIAGNOSTIC: Calculated size_threshold = sqrt({max_cluster_size})*0.8 = {size_threshold}")
+        else:
+            logger.info(f"DIAGNOSTIC: Using provided size_threshold = {size_threshold}")
+            
+        # Log before filtering
+        cluster_sizes = {label: len(cluster.memory_list) for label, cluster in cluster_dict.items()}
+        logger.info(f"DIAGNOSTIC: Before filtering, cluster sizes: {cluster_sizes}")
             
         # Keep only clusters that meet the size threshold
         cluster_list = [
@@ -346,7 +460,12 @@ class TopicsGenerator:
             if len(cluster.memory_list) >= size_threshold
         ]
         
-        logger.info(f"Removed {len(cluster_dict) - len(cluster_list)} immature clusters (threshold: {size_threshold})")
+        filtered_count = len(cluster_dict) - len(cluster_list)
+        logger.info(f"DIAGNOSTIC: Removed {filtered_count} immature clusters (threshold: {size_threshold})")
+        
+        # Log retained clusters
+        retained_sizes = {getattr(cluster, 'id', f'cluster_{i}'): len(cluster.memory_list) for i, cluster in enumerate(cluster_list)}
+        logger.info(f"DIAGNOSTIC: After filtering, retained cluster sizes: {retained_sizes}")
         
         return cluster_list
     
@@ -462,9 +581,14 @@ class TopicsGenerator:
         # Determine size threshold for small clusters
         if updated_cluster_list or merge_cluster_list:
             all_clusters = updated_cluster_list + merge_cluster_list
-            size_threshold = math.sqrt(max([len(cluster.memory_list) for cluster in all_clusters]))
+            # size_threshold = math.sqrt(max([len(cluster.memory_list) for cluster in all_clusters]))
+            max_size = max([len(cluster.memory_list) for cluster in all_clusters])
+            # Use smaller threshold (times 0.8) to keep more clusters
+            size_threshold = math.sqrt(max_size) * 0.8
         else:
-            size_threshold = math.sqrt(max([len(cluster.memory_list) for cluster in cluster_list])) if cluster_list else 1
+            # size_threshold = math.sqrt(max([len(cluster.memory_list) for cluster in cluster_list])) if cluster_list else 1
+            max_size = max([len(cluster.memory_list) for cluster in cluster_list])
+            size_threshold = math.sqrt(max_size) * 0.8
         
         # Process outliers
         if outlier_memory_list:

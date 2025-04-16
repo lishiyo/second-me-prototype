@@ -839,7 +839,7 @@ class VectorDB:
             
         # Extract from dictionary format
         if 'default' in embedding:
-            print(f"VectorDB: Extracting embedding vector from dictionary with 'default' key for {object_id}")
+            # print(f"VectorDB: Extracting embedding vector from dictionary with 'default' key for {object_id}")
             return embedding['default']
             
         # Try to find a suitable vector in the dictionary

@@ -224,10 +224,21 @@ class Memory:
     # Add to_json for compatibility with lpm_kernel
     def to_json(self) -> Dict[str, Any]:
         """Convert to JSON representation for lpm_kernel compatibility"""
-        result = {"memoryId": self.memory_id, "embedding": self.embedding}
+        result = {"memoryId": self.memory_id}
+        
+        # Handle embedding properly for serialization
+        if self.embedding is not None:
+            if isinstance(self.embedding, np.ndarray):
+                result["embedding"] = self.embedding.tolist()
+            else:
+                result["embedding"] = self.embedding
+        else:
+            result["embedding"] = []
+            
         # Add all metadata keys to the result
         for k, v in self.metadata.items():
             result[k] = v
+            
         return result
     
     @classmethod
@@ -490,14 +501,25 @@ class Cluster:
     # Add to_json for compatibility with lpm_kernel
     def to_json(self) -> Dict[str, Any]:
         """Convert to JSON representation for lpm_kernel compatibility"""
-        return {
-            "clusterId": self.id if not self.is_new else None,
-            # "topic": self.name,
-            # "tags": self.tags,
+        # Add more properties for debugging
+        result = {
+            "clusterId": self.id,  # Always include ID regardless of is_new status
+            "topic": self.name,
+            "tags": self.tags,
             "memoryList": [memory.to_json() for memory in self.memory_list],
-            "centerEmbedding": self.center_embedding,
             "mergeList": self.merge_list
         }
+        
+        # Handle center_embedding properly for serialization
+        if self.center_embedding is not None:
+            if isinstance(self.center_embedding, np.ndarray):
+                result["centerEmbedding"] = self.center_embedding.tolist()
+            else:
+                result["centerEmbedding"] = self.center_embedding
+        else:
+            result["centerEmbedding"] = []
+            
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Cluster":
