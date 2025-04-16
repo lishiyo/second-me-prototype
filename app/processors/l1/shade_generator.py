@@ -490,18 +490,18 @@ Domain Timelines:
         # logger.info(f"EMBEDDING DEBUG: Calculated center embedding for new shade: {type(center_embedding)}, length: {len(center_embedding) if center_embedding is not None else 'None'}")
             
         # Store shade data in Wasabi
-        # TODO: do we do this here?
-        s3_path = self._store_shade_data(user_id, {
-            "name": name,
-            "summary": summary,
-            "confidence": confidence,
-            "timelines": timelines,
-            "aspect": aspect,
-            "icon": icon,
-            "desc_third_view": desc_third_view,
-            "content_third_view": content_third_view,
-            "center_embedding": center_embedding
-        }, notes)
+        # TODO: do we do this here? no, we want to store it separately in `_store_l1_data`
+        # s3_path = self._store_shade_data(user_id, {
+        #     "name": name,
+        #     "summary": summary,
+        #     "confidence": confidence,
+        #     "timelines": timelines,
+        #     "aspect": aspect,
+        #     "icon": icon,
+        #     "desc_third_view": desc_third_view,
+        #     "content_third_view": content_third_view,
+        #     "center_embedding": center_embedding
+        # }, notes)
         
         # Prepare metadata with timelines and embedding
         metadata = {
@@ -1036,50 +1036,50 @@ Recent Memories:
                 logger.error(f"Error parsing merged shades response: {str(e)}", exc_info=True)
                 return []
     
-    def _store_shade_data(self, user_id: str, shade_data: Dict[str, Any], notes: List[Note]) -> str:
-        """
-        Store shade data in Wasabi.
+    # def _store_shade_data(self, user_id: str, shade_data: Dict[str, Any], notes: List[Note]) -> str:
+    #     """
+    #     Store shade data in Wasabi.
         
-        Args:
-            user_id: User ID
-            shade_data: Shade data to store
-            notes: Notes associated with the shade
+    #     Args:
+    #         user_id: User ID
+    #         shade_data: Shade data to store
+    #         notes: Notes associated with the shade
             
-        Returns:
-            S3 path to the stored data
-        """
-        # Prepare complete shade data including notes
-        complete_data = {
-            "shade": {
-                "name": shade_data.get("name", "Unknown Shade"),
-                "summary": shade_data.get("summary", ""),
-                "confidence": shade_data.get("confidence", 0.0),
-                "center_embedding": shade_data.get("center_embedding"),
-                "timelines": shade_data.get("timelines", [])
-            },
-            "notes": self._prepare_notes_for_json(notes),
-            "created_at": datetime.now().isoformat()
-        }
+    #     Returns:
+    #         S3 path to the stored data
+    #     """
+    #     # Prepare complete shade data including notes
+    #     complete_data = {
+    #         "shade": {
+    #             "name": shade_data.get("name", "Unknown Shade"),
+    #             "summary": shade_data.get("summary", ""),
+    #             "confidence": shade_data.get("confidence", 0.0),
+    #             "center_embedding": shade_data.get("center_embedding"),
+    #             "timelines": shade_data.get("timelines", [])
+    #         },
+    #         "notes": self._prepare_notes_for_json(notes),
+    #         "created_at": datetime.now().isoformat()
+    #     }
         
-        # Generate a unique path
-        shade_id = str(uuid.uuid4())
-        s3_path = f"l1/shades/{user_id}/{shade_id}.json"
+    #     # Generate a unique path
+    #     shade_id = str(uuid.uuid4())
+    #     s3_path = f"l1/shades/{user_id}/{shade_id}.json"
         
-        # Store in Wasabi
-        try:
-            self.wasabi_adapter.store_json(s3_path, complete_data)
-        except TypeError as e:
-            # Handle numpy array serialization error
-            if "not JSON serializable" in str(e):
-                logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
-                # Convert the data to a JSON-compatible format and retry
-                json_compatible_data = self._make_json_serializable(complete_data)
-                self.wasabi_adapter.store_json(s3_path, json_compatible_data)
-            else:
-                # Re-raise if it's not a serialization error
-                raise
+    #     # Store in Wasabi
+    #     try:
+    #         self.wasabi_adapter.store_json(s3_path, complete_data)
+    #     except TypeError as e:
+    #         # Handle numpy array serialization error
+    #         if "not JSON serializable" in str(e):
+    #             logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
+    #             # Convert the data to a JSON-compatible format and retry
+    #             json_compatible_data = self._make_json_serializable(complete_data)
+    #             self.wasabi_adapter.store_json(s3_path, json_compatible_data)
+    #         else:
+    #             # Re-raise if it's not a serialization error
+    #             raise
         
-        return s3_path
+    #     return s3_path
     
     def _prepare_notes_for_json(self, notes: List[Note]) -> List[Dict[str, Any]]:
         """
@@ -1122,48 +1122,48 @@ Recent Memories:
         else:
             return obj
     
-    def _store_merged_shade_data(self, user_id: str, shade_data: Dict[str, Any]) -> str:
-        """
-        Store merged shade data in Wasabi.
+    # def _store_merged_shade_data(self, user_id: str, shade_data: Dict[str, Any]) -> str:
+    #     """
+    #     Store merged shade data in Wasabi.
         
-        Args:
-            user_id: User ID
-            shade_data: Merged shade data to store
+    #     Args:
+    #         user_id: User ID
+    #         shade_data: Merged shade data to store
             
-        Returns:
-            S3 path to the stored data
-        """
-        # Prepare complete shade data
-        complete_data = {
-            "shade": {
-                "name": shade_data.get("name", "Unknown Shade"),
-                "summary": shade_data.get("summary", ""),
-                "confidence": shade_data.get("confidence", 0.0),
-                "center_embedding": shade_data.get("center_embedding"),
-                "timelines": shade_data.get("timelines", [])
-            },
-            "created_at": datetime.now().isoformat()
-        }
+    #     Returns:
+    #         S3 path to the stored data
+    #     """
+    #     # Prepare complete shade data
+    #     complete_data = {
+    #         "shade": {
+    #             "name": shade_data.get("name", "Unknown Shade"),
+    #             "summary": shade_data.get("summary", ""),
+    #             "confidence": shade_data.get("confidence", 0.0),
+    #             "center_embedding": shade_data.get("center_embedding"),
+    #             "timelines": shade_data.get("timelines", [])
+    #         },
+    #         "created_at": datetime.now().isoformat()
+    #     }
         
-        # Generate a unique path
-        shade_id = str(uuid.uuid4())
-        s3_path = f"l1/merged_shades/{user_id}/{shade_id}.json"
+    #     # Generate a unique path
+    #     shade_id = str(uuid.uuid4())
+    #     s3_path = f"l1/merged_shades/{user_id}/{shade_id}.json"
         
-        # Store in Wasabi
-        try:
-            self.wasabi_adapter.store_json(s3_path, complete_data)
-        except TypeError as e:
-            # Handle numpy array serialization error
-            if "not JSON serializable" in str(e):
-                logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
-                # Convert the data to a JSON-compatible format and retry
-                json_compatible_data = self._make_json_serializable(complete_data)
-                self.wasabi_adapter.store_json(s3_path, json_compatible_data)
-            else:
-                # Re-raise if it's not a serialization error
-                raise
+    #     # Store in Wasabi
+    #     try:
+    #         self.wasabi_adapter.store_json(s3_path, complete_data)
+    #     except TypeError as e:
+    #         # Handle numpy array serialization error
+    #         if "not JSON serializable" in str(e):
+    #             logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
+    #             # Convert the data to a JSON-compatible format and retry
+    #             json_compatible_data = self._make_json_serializable(complete_data)
+    #             self.wasabi_adapter.store_json(s3_path, json_compatible_data)
+    #         else:
+    #             # Re-raise if it's not a serialization error
+    #             raise
         
-        return s3_path
+    #     return s3_path
     
     def _calculate_merged_center_embedding(self, shades: List[L1Shade]) -> Optional[List[float]]:
         """
@@ -1383,46 +1383,46 @@ Recent Memories:
                 logger.error(f"Error parsing improved shade response: {str(e)}", exc_info=True)
                 return {}
     
-    def _store_improved_shade_data(self, user_id: str, shade_data: Dict[str, Any], notes: List[Note]) -> str:
-        """
-        Store improved shade data in Wasabi.
+    # def _store_improved_shade_data(self, user_id: str, shade_data: Dict[str, Any], notes: List[Note]) -> str:
+    #     """
+    #     Store improved shade data in Wasabi.
         
-        Args:
-            user_id: User ID
-            shade_data: Improved shade data to store
-            notes: New notes used for improvement
+    #     Args:
+    #         user_id: User ID
+    #         shade_data: Improved shade data to store
+    #         notes: New notes used for improvement
             
-        Returns:
-            S3 path to the stored data
-        """
-        # Prepare complete shade data
-        complete_data = {
-            "shade": {
-                "name": shade_data.get("name", "Unknown Shade"),
-                "summary": shade_data.get("summary", ""),
-                "confidence": shade_data.get("confidence", 0.0),
-                "timelines": shade_data.get("timelines", [])
-            },
-            "new_notes": self._prepare_notes_for_json(notes),
-            "updated_at": datetime.now().isoformat()
-        }
+    #     Returns:
+    #         S3 path to the stored data
+    #     """
+    #     # Prepare complete shade data
+    #     complete_data = {
+    #         "shade": {
+    #             "name": shade_data.get("name", "Unknown Shade"),
+    #             "summary": shade_data.get("summary", ""),
+    #             "confidence": shade_data.get("confidence", 0.0),
+    #             "timelines": shade_data.get("timelines", [])
+    #         },
+    #         "new_notes": self._prepare_notes_for_json(notes),
+    #         "updated_at": datetime.now().isoformat()
+    #     }
         
-        # Generate a unique path
-        shade_id = str(uuid.uuid4())
-        s3_path = f"l1/improved_shades/{user_id}/{shade_id}.json"
+    #     # Generate a unique path
+    #     shade_id = str(uuid.uuid4())
+    #     s3_path = f"l1/improved_shades/{user_id}/{shade_id}.json"
         
-        # Store in Wasabi
-        try:
-            self.wasabi_adapter.store_json(s3_path, complete_data)
-        except TypeError as e:
-            # Handle numpy array serialization error
-            if "not JSON serializable" in str(e):
-                logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
-                # Convert the data to a JSON-compatible format and retry
-                json_compatible_data = self._make_json_serializable(complete_data)
-                self.wasabi_adapter.store_json(s3_path, json_compatible_data)
-            else:
-                # Re-raise if it's not a serialization error
-                raise
+    #     # Store in Wasabi
+    #     try:
+    #         self.wasabi_adapter.store_json(s3_path, complete_data)
+    #     except TypeError as e:
+    #         # Handle numpy array serialization error
+    #         if "not JSON serializable" in str(e):
+    #             logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
+    #             # Convert the data to a JSON-compatible format and retry
+    #             json_compatible_data = self._make_json_serializable(complete_data)
+    #             self.wasabi_adapter.store_json(s3_path, json_compatible_data)
+    #         else:
+    #             # Re-raise if it's not a serialization error
+    #             raise
         
-        return s3_path 
+    #     return s3_path 

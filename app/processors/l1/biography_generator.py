@@ -293,9 +293,10 @@ class BiographyGenerator:
             updated_bio = self._generate_perspective_shifts(updated_bio)
             
             # Store biography data in Wasabi
-            s3_path = self._store_bio_data(user_id, updated_bio.to_dict(), "global")
+            # TODO: biography is stored separately
+            # s3_path = self._store_bio_data(user_id, updated_bio.to_dict(), "global")
             
-            logger.info(f"Generated global biography with {len(updated_bio.content_third_view)} characters, saved to {s3_path}")
+            logger.info(f"Generated global biography with {len(updated_bio.content_third_view)} characters")
             return updated_bio
             
         except Exception as e:
@@ -361,7 +362,8 @@ class BiographyGenerator:
             bio = self._generate_perspective_shifts(bio)
             
             # Store biography data in Wasabi
-            s3_path = self._store_bio_data(user_id, bio.to_dict(), "status")
+            # TODO: biography is stored separately
+            # s3_path = self._store_bio_data(user_id, bio.to_dict(), "status")
             
             logger.info(f"Generated status biography with {len(bio.content_third_view)} characters, saved to {s3_path}")
             return bio
@@ -600,29 +602,29 @@ class BiographyGenerator:
                 logger.error(f"Error parsing status biography response: {str(e)}", exc_info=True)
                 return {}
     
-    def _store_bio_data(self, user_id: str, bio_data: Dict[str, Any], bio_type: str) -> str:
-        """
-        Store biography data in Wasabi.
+    # def _store_bio_data(self, user_id: str, bio_data: Dict[str, Any], bio_type: str) -> str:
+    #     """
+    #     Store biography data in Wasabi.
         
-        Args:
-            user_id: User ID
-            bio_data: Biography data to store
-            bio_type: Type of biography ("global" or "status")
+    #     Args:
+    #         user_id: User ID
+    #         bio_data: Biography data to store
+    #         bio_type: Type of biography ("global" or "status")
             
-        Returns:
-            S3 path to the stored data
-        """
-        # Prepare complete biography data
-        complete_data = {
-            "bio": bio_data,
-            "created_at": datetime.now().isoformat()
-        }
+    #     Returns:
+    #         S3 path to the stored data
+    #     """
+    #     # Prepare complete biography data
+    #     complete_data = {
+    #         "bio": bio_data,
+    #         "created_at": datetime.now().isoformat()
+    #     }
         
-        # Generate a unique path
-        bio_id = str(uuid.uuid4())
-        s3_path = f"l1/bios/{user_id}/{bio_type}/{bio_id}.json"
+    #     # Generate a unique path
+    #     bio_id = str(uuid.uuid4())
+    #     s3_path = f"l1/bios/{user_id}/{bio_type}/{bio_id}.json"
         
-        # Store in Wasabi
-        self.wasabi_adapter.store_json(s3_path, complete_data)
+    #     # Store in Wasabi
+    #     self.wasabi_adapter.store_json(s3_path, complete_data)
         
-        return s3_path 
+    #     return s3_path 

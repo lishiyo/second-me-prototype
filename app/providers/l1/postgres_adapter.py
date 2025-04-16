@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional, Tuple, Union
 from datetime import datetime
 from sqlalchemy import text, select, and_
 from sqlalchemy.orm import Session
+import json
 
 from app.providers.rel_db import RelationalDB, Document
 from app.models.l1.db_models import (
@@ -218,43 +219,43 @@ class PostgresAdapter:
             self.close_db_session(session)
     
     # Cluster methods
-    def create_cluster(self, user_id: str, topic_id: str, name: str, 
-                       summary: str, document_count: int, s3_path: str) -> Optional[L1Cluster]:
-        """
-        Create a new cluster.
+    # def create_cluster(self, user_id: str, topic_id: str, name: str, 
+    #                    summary: str, document_count: int, s3_path: str) -> Optional[L1Cluster]:
+    #     """
+    #     Create a new cluster.
         
-        Args:
-            user_id: The user ID.
-            topic_id: The parent topic ID.
-            name: Cluster name.
-            summary: Cluster summary.
-            document_count: Number of documents in the cluster.
-            s3_path: S3 path to the cluster data.
+    #     Args:
+    #         user_id: The user ID.
+    #         topic_id: The parent topic ID.
+    #         name: Cluster name.
+    #         summary: Cluster summary.
+    #         document_count: Number of documents in the cluster.
+    #         s3_path: S3 path to the cluster data.
             
-        Returns:
-            The created L1Cluster object or None if creation failed.
-        """
-        session = self.get_db_session()
-        try:
-            cluster = L1Cluster(
-                user_id=user_id,
-                topic_id=topic_id,
-                name=name,
-                summary=summary,
-                document_count=document_count,
-                s3_path=s3_path,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            session.add(cluster)
-            session.commit()
-            return cluster
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error creating cluster: {e}")
-            return None
-        finally:
-            self.close_db_session(session)
+    #     Returns:
+    #         The created L1Cluster object or None if creation failed.
+    #     """
+    #     session = self.get_db_session()
+    #     try:
+    #         cluster = L1Cluster(
+    #             user_id=user_id,
+    #             topic_id=topic_id,
+    #             name=name,
+    #             summary=summary,
+    #             document_count=document_count,
+    #             s3_path=s3_path,
+    #             created_at=datetime.utcnow(),
+    #             updated_at=datetime.utcnow()
+    #         )
+    #         session.add(cluster)
+    #         session.commit()
+    #         return cluster
+    #     except Exception as e:
+    #         session.rollback()
+    #         logger.error(f"Error creating cluster: {e}")
+    #         return None
+    #     finally:
+    #         self.close_db_session(session)
     
     def add_document_to_cluster(self, cluster_id: str, document_id: str, 
                                similarity_score: float) -> bool:
@@ -355,41 +356,41 @@ class PostgresAdapter:
             self.close_db_session(session)
     
     # Shade methods
-    def create_shade(self, user_id: str, name: str, summary: str, 
-                    confidence: float, s3_path: str) -> Optional[L1Shade]:
-        """
-        Create a new shade.
+    # def create_shade(self, user_id: str, name: str, summary: str, 
+    #                 confidence: float, s3_path: str) -> Optional[L1Shade]:
+    #     """
+    #     Create a new shade.
         
-        Args:
-            user_id: The user ID.
-            name: Shade name.
-            summary: Shade summary.
-            confidence: Confidence score for the shade.
-            s3_path: S3 path to the shade data.
+    #     Args:
+    #         user_id: The user ID.
+    #         name: Shade name.
+    #         summary: Shade summary.
+    #         confidence: Confidence score for the shade.
+    #         s3_path: S3 path to the shade data.
             
-        Returns:
-            The created L1Shade object or None if creation failed.
-        """
-        session = self.get_db_session()
-        try:
-            shade = L1Shade(
-                user_id=user_id,
-                name=name,
-                summary=summary,
-                confidence=confidence,
-                s3_path=s3_path,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            session.add(shade)
-            session.commit()
-            return shade
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error creating shade: {e}")
-            return None
-        finally:
-            self.close_db_session(session)
+    #     Returns:
+    #         The created L1Shade object or None if creation failed.
+    #     """
+    #     session = self.get_db_session()
+    #     try:
+    #         shade = L1Shade(
+    #             user_id=user_id,
+    #             name=name,
+    #             summary=summary,
+    #             confidence=confidence,
+    #             s3_path=s3_path,
+    #             created_at=datetime.utcnow(),
+    #             updated_at=datetime.utcnow()
+    #         )
+    #         session.add(shade)
+    #         session.commit()
+    #         return shade
+    #     except Exception as e:
+    #         session.rollback()
+    #         logger.error(f"Error creating shade: {e}")
+    #         return None
+    #     finally:
+    #         self.close_db_session(session)
     
     def add_cluster_to_shade(self, shade_id: str, cluster_id: str) -> bool:
         """
@@ -482,46 +483,46 @@ class PostgresAdapter:
             self.close_db_session(session)
     
     # Biography methods
-    def create_global_biography(self, user_id: str, content: str, content_third_view: str,
-                               summary: str, summary_third_view: str, confidence: float,
-                               version: int) -> Optional[L1GlobalBiography]:
-        """
-        Create a new global biography.
+    # def create_global_biography(self, user_id: str, content: str, content_third_view: str,
+    #                            summary: str, summary_third_view: str, confidence: float,
+    #                            version: int) -> Optional[L1GlobalBiography]:
+    #     """
+    #     Create a new global biography.
         
-        Args:
-            user_id: The user ID.
-            content: Biography content in first person.
-            content_third_view: Biography content in third person.
-            summary: Short summary in first person.
-            summary_third_view: Short summary in third person.
-            confidence: Confidence score for the biography.
-            version: The version number.
+    #     Args:
+    #         user_id: The user ID.
+    #         content: Biography content in first person.
+    #         content_third_view: Biography content in third person.
+    #         summary: Short summary in first person.
+    #         summary_third_view: Short summary in third person.
+    #         confidence: Confidence score for the biography.
+    #         version: The version number.
             
-        Returns:
-            The created L1GlobalBiography object or None if creation failed.
-        """
-        session = self.get_db_session()
-        try:
-            bio = L1GlobalBiography(
-                user_id=user_id,
-                content=content,
-                content_third_view=content_third_view,
-                summary=summary,
-                summary_third_view=summary_third_view,
-                confidence=confidence,
-                version=version,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            session.add(bio)
-            session.commit()
-            return bio
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error creating global biography: {e}")
-            return None
-        finally:
-            self.close_db_session(session)
+    #     Returns:
+    #         The created L1GlobalBiography object or None if creation failed.
+    #     """
+    #     session = self.get_db_session()
+    #     try:
+    #         bio = L1GlobalBiography(
+    #             user_id=user_id,
+    #             content=content,
+    #             content_third_view=content_third_view,
+    #             summary=summary,
+    #             summary_third_view=summary_third_view,
+    #             confidence=confidence,
+    #             version=version,
+    #             created_at=datetime.utcnow(),
+    #             updated_at=datetime.utcnow()
+    #         )
+    #         session.add(bio)
+    #         session.commit()
+    #         return bio
+    #     except Exception as e:
+    #         session.rollback()
+    #         logger.error(f"Error creating global biography: {e}")
+    #         return None
+    #     finally:
+    #         self.close_db_session(session)
     
     def create_status_biography(self, user_id: str, content: str, content_third_view: str,
                                summary: str, summary_third_view: str) -> Optional[L1StatusBiography]:
@@ -625,96 +626,96 @@ class PostgresAdapter:
             s3_path=s3_path
         )
     
-    def create_cluster_from_model(self, user_id: str, cluster: Cluster) -> Optional[L1Cluster]:
-        """
-        Create a new cluster from a Cluster domain model.
+    # def create_cluster_from_model(self, user_id: str, cluster: Cluster) -> Optional[L1Cluster]:
+    #     """
+    #     Create a new cluster from a Cluster domain model.
         
-        Args:
-            user_id: The user ID.
-            cluster: Cluster domain model.
+    #     Args:
+    #         user_id: The user ID.
+    #         cluster: Cluster domain model.
             
-        Returns:
-            The created L1Cluster object or None if creation failed.
-        """
-        s3_path = f"l1/clusters/{user_id}/{cluster.id}.json"
-        db_cluster = self.create_cluster(
-            user_id=user_id,
-            topic_id=cluster.topic_id or "",
-            name=cluster.name or "",
-            summary=cluster.summary or "",
-            document_count=cluster.document_count,
-            s3_path=s3_path
-        )
+    #     Returns:
+    #         The created L1Cluster object or None if creation failed.
+    #     """
+    #     s3_path = f"l1/clusters/{user_id}/{cluster.id}.json"
+    #     db_cluster = self.create_cluster(
+    #         user_id=user_id,
+    #         topic_id=cluster.topic_id or "",
+    #         name=cluster.name or "",
+    #         summary=cluster.summary or "",
+    #         document_count=cluster.document_count,
+    #         s3_path=s3_path
+    #     )
         
-        # Add documents to cluster
-        if db_cluster:
-            for document_id in cluster.document_ids:
-                # Use default similarity score of 1.0 if not available
-                similarity_score = 1.0
-                self.add_document_to_cluster(db_cluster.id, document_id, similarity_score)
+    #     # Add documents to cluster
+    #     if db_cluster:
+    #         for document_id in cluster.document_ids:
+    #             # Use default similarity score of 1.0 if not available
+    #             similarity_score = 1.0
+    #             self.add_document_to_cluster(db_cluster.id, document_id, similarity_score)
         
-        return db_cluster
+    #     return db_cluster
     
-    def create_shade_from_model(self, user_id: str, shade: ShadeModel) -> Optional[L1Shade]:
-        """
-        Create a L1Shade database record from a domain model.
+    # def create_shade_from_model(self, user_id: str, shade: ShadeModel) -> Optional[L1Shade]:
+    #     """
+    #     Create a L1Shade database record from a domain model.
         
-        Args:
-            user_id: The user ID.
-            shade: ShadeModel domain model.
+    #     Args:
+    #         user_id: The user ID.
+    #         shade: ShadeModel domain model.
             
-        Returns:
-            The created L1Shade database object or None if creation failed.
-        """
-        session = self.get_db_session()
-        try:
-            db_shade = L1Shade(
-                id=shade.id,
-                user_id=user_id,
-                name=shade.name,
-                summary=shade.summary,
-                confidence=shade.confidence,
-                s3_path=shade.s3_path or "",
-                created_at=datetime.fromisoformat(shade.created_at) if isinstance(shade.created_at, str) else shade.created_at,
-                updated_at=datetime.fromisoformat(shade.updated_at) if isinstance(shade.updated_at, str) else shade.updated_at,
-                aspect=shade.aspect,
-                icon=shade.icon,
-                desc_second_view=shade.desc_second_view,
-                desc_third_view=shade.desc_third_view,
-                content_second_view=shade.content_second_view,
-                content_third_view=shade.content_third_view
-            )
-            session.add(db_shade)
-            session.commit()
-            return db_shade
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error creating shade from model: {e}")
-            return None
-        finally:
-            self.close_db_session(session)
+    #     Returns:
+    #         The created L1Shade database object or None if creation failed.
+    #     """
+    #     session = self.get_db_session()
+    #     try:
+    #         db_shade = L1Shade(
+    #             id=shade.id,
+    #             user_id=user_id,
+    #             name=shade.name,
+    #             summary=shade.summary,
+    #             confidence=shade.confidence,
+    #             s3_path=shade.s3_path or "",
+    #             created_at=datetime.fromisoformat(shade.created_at) if isinstance(shade.created_at, str) else shade.created_at,
+    #             updated_at=datetime.fromisoformat(shade.updated_at) if isinstance(shade.updated_at, str) else shade.updated_at,
+    #             aspect=shade.aspect,
+    #             icon=shade.icon,
+    #             desc_second_view=shade.desc_second_view,
+    #             desc_third_view=shade.desc_third_view,
+    #             content_second_view=shade.content_second_view,
+    #             content_third_view=shade.content_third_view
+    #         )
+    #         session.add(db_shade)
+    #         session.commit()
+    #         return db_shade
+    #     except Exception as e:
+    #         session.rollback()
+    #         logger.error(f"Error creating shade from model: {e}")
+    #         return None
+    #     finally:
+    #         self.close_db_session(session)
     
-    def create_global_biography_from_model(self, user_id: str, bio: Bio, version: int) -> Optional[L1GlobalBiography]:
-        """
-        Create a new global biography from a Bio domain model.
+    # def create_global_biography_from_model(self, user_id: str, bio: Bio, version: int) -> Optional[L1GlobalBiography]:
+    #     """
+    #     Create a new global biography from a Bio domain model.
         
-        Args:
-            user_id: The user ID.
-            bio: Bio domain model.
-            version: Version number.
+    #     Args:
+    #         user_id: The user ID.
+    #         bio: Bio domain model.
+    #         version: Version number.
             
-        Returns:
-            The created L1GlobalBiography object or None if creation failed.
-        """
-        return self.create_global_biography(
-            user_id=user_id,
-            content=bio.content_first_view,
-            content_third_view=bio.content_third_view,
-            summary=bio.summary_first_view,
-            summary_third_view=bio.summary_third_view,
-            confidence=bio.confidence,
-            version=version
-        )
+    #     Returns:
+    #         The created L1GlobalBiography object or None if creation failed.
+    #     """
+    #     return self.create_global_biography(
+    #         user_id=user_id,
+    #         content=bio.content_first_view,
+    #         content_third_view=bio.content_third_view,
+    #         summary=bio.summary_first_view,
+    #         summary_third_view=bio.summary_third_view,
+    #         confidence=bio.confidence,
+    #         version=version
+    #     )
     
     def create_status_biography_from_model(self, user_id: str, bio: Bio) -> Optional[L1StatusBiography]:
         """
@@ -927,5 +928,250 @@ class PostgresAdapter:
         except Exception as e:
             logger.error(f"Error getting documents with L0: {e}")
             return []
+        finally:
+            self.close_db_session(session)
+    
+    # New storage methods with version support
+    
+    def store_cluster(self, user_id: str, cluster_id: str, name: str, 
+                     document_ids: List[str], version: int) -> bool:
+        """
+        Store cluster metadata with version information.
+        
+        Args:
+            user_id: The user ID
+            cluster_id: The cluster ID
+            name: The cluster name
+            document_ids: List of document IDs associated with this cluster
+            version: The L1 version number
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        session = self.get_db_session()
+        try:
+            # First check if cluster already exists
+            existing_cluster = session.query(L1Cluster).filter(
+                L1Cluster.id == cluster_id
+            ).first()
+            
+            if existing_cluster:
+                # Update existing cluster
+                existing_cluster.user_id = user_id
+                existing_cluster.name = name
+                existing_cluster.document_count = len(document_ids)
+                existing_cluster.updated_at = datetime.utcnow()
+                
+                # Delete existing document associations to recreate them
+                session.query(L1ClusterDocument).filter(
+                    L1ClusterDocument.cluster_id == cluster_id
+                ).delete()
+            else:
+                # Create a new cluster record
+                s3_path = f"l1/clusters/{user_id}/{cluster_id}.json"
+                cluster = L1Cluster(
+                    id=cluster_id,
+                    user_id=user_id,
+                    name=name,
+                    document_count=len(document_ids),
+                    s3_path=s3_path,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                session.add(cluster)
+            
+            # Add document associations with default similarity score
+            for doc_id in document_ids:
+                cluster_doc = L1ClusterDocument(
+                    cluster_id=cluster_id,
+                    document_id=doc_id,
+                    similarity_score=1.0  # Default similarity score
+                )
+                session.add(cluster_doc)
+            
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error storing cluster: {e}")
+            return False
+        finally:
+            self.close_db_session(session)
+    
+    def store_chunk_topics(self, user_id: str, chunk_topics: Dict[str, Dict], version: int) -> bool:
+        """
+        Store chunk topics with version information.
+        
+        Args:
+            user_id: The user ID
+            chunk_topics: Dictionary mapping chunk IDs to topic data
+            version: The L1 version number
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        session = self.get_db_session()
+        try:
+            # Store in a custom JSON table or another appropriate storage structure
+            # For now, we'll use the L1Topic table with a special prefix to differentiate
+            for chunk_id, topic_data in chunk_topics.items():
+                topic_id = f"chunk_{chunk_id}"
+                topic_name = topic_data.get("topic", "Unknown Topic")
+                summary = json.dumps(topic_data)  # Store the full topic data as JSON string
+                
+                # Check if topic already exists
+                existing_topic = session.query(L1Topic).filter(
+                    L1Topic.id == topic_id
+                ).first()
+                
+                if existing_topic:
+                    # Update existing topic
+                    existing_topic.name = topic_name
+                    existing_topic.summary = summary
+                    existing_topic.updated_at = datetime.utcnow()
+                else:
+                    # Create a new topic record
+                    s3_path = f"l1/chunk_topics/{user_id}/{topic_id}.json"
+                    topic = L1Topic(
+                        id=topic_id,
+                        user_id=user_id,
+                        name=topic_name,
+                        summary=summary,
+                        s3_path=s3_path,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    session.add(topic)
+            
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error storing chunk topics: {e}")
+            return False
+        finally:
+            self.close_db_session(session)
+    
+    def store_shade(self, user_id: str, shade_id: str, name: str, summary: str,
+                   confidence: float, source_clusters: List[str], version: int) -> bool:
+        """
+        Store shade metadata with version information.
+        
+        Args:
+            user_id: The user ID
+            shade_id: The shade ID
+            name: The shade name
+            summary: The shade summary
+            confidence: The confidence score
+            source_clusters: List of source cluster IDs
+            version: The L1 version number
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        session = self.get_db_session()
+        try:
+            # Check if shade already exists
+            existing_shade = session.query(L1Shade).filter(
+                L1Shade.id == shade_id
+            ).first()
+            
+            if existing_shade:
+                # Update existing shade
+                existing_shade.name = name
+                existing_shade.summary = summary
+                existing_shade.confidence = confidence
+                existing_shade.updated_at = datetime.utcnow()
+                
+                # Delete existing cluster associations to recreate them
+                session.query(L1ShadeCluster).filter(
+                    L1ShadeCluster.shade_id == shade_id
+                ).delete()
+            else:
+                # Create a new shade record
+                s3_path = f"l1/shades/{user_id}/{shade_id}.json"
+                shade = L1Shade(
+                    id=shade_id,
+                    user_id=user_id,
+                    name=name,
+                    summary=summary,
+                    confidence=confidence,
+                    s3_path=s3_path,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                session.add(shade)
+            
+            # Add cluster associations
+            for cluster_id in source_clusters:
+                shade_cluster = L1ShadeCluster(
+                    shade_id=shade_id,
+                    cluster_id=cluster_id
+                )
+                session.add(shade_cluster)
+            
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error storing shade: {e}")
+            return False
+        finally:
+            self.close_db_session(session)
+    
+    def store_global_biography(self, user_id: str, content: str, content_third_view: str,
+                             summary: str, summary_third_view: str, version: int) -> bool:
+        """
+        Store global biography with version information.
+        
+        Args:
+            user_id: The user ID
+            content: Biography content in second person (for compatibility)
+            content_third_view: Biography content in third person
+            summary: Biography summary in second person (for compatibility)
+            summary_third_view: Biography summary in third person
+            version: The L1 version number
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        session = self.get_db_session()
+        try:
+            # Check if a biography for this version already exists
+            existing_bio = session.query(L1GlobalBiography).filter(
+                and_(
+                    L1GlobalBiography.user_id == user_id,
+                    L1GlobalBiography.version == version
+                )
+            ).first()
+            
+            if existing_bio:
+                # Update existing biography
+                existing_bio.content = content
+                existing_bio.content_third_view = content_third_view
+                existing_bio.summary = summary
+                existing_bio.summary_third_view = summary_third_view
+                existing_bio.updated_at = datetime.utcnow()
+            else:
+                # Create a new biography record
+                bio = L1GlobalBiography(
+                    user_id=user_id,
+                    content=content,
+                    content_third_view=content_third_view,
+                    summary=summary,
+                    summary_third_view=summary_third_view,
+                    confidence=0.8,  # Default confidence
+                    version=version,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                session.add(bio)
+            
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error storing global biography: {e}")
+            return False
         finally:
             self.close_db_session(session) 

@@ -280,24 +280,24 @@ class WasabiStorageAdapter:
             return L1Shade(**data)
         return None
     
-    def store_global_bio(self, user_id: str, version: int, bio: Bio) -> str:
-        """
-        Store a Bio domain model as a global biography in Wasabi.
+    # def store_global_bio(self, user_id: str, version: int, bio: Bio) -> str:
+    #     """
+    #     Store a Bio domain model as a global biography in Wasabi.
         
-        Args:
-            user_id: User ID.
-            version: Biography version.
-            bio: Bio domain model.
+    #     Args:
+    #         user_id: User ID.
+    #         version: Biography version.
+    #         bio: Bio domain model.
             
-        Returns:
-            S3 path where the biography was stored.
-        """
-        self._validate_model(bio)
+    #     Returns:
+    #         S3 path where the biography was stored.
+    #     """
+    #     self._validate_model(bio)
         
-        bio_id = f"global_v{version}"
-        s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
-        self.store_json(s3_path, bio.to_dict())
-        return s3_path
+    #     bio_id = f"global_v{version}"
+    #     s3_path = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
+    #     self.store_json(s3_path, bio.to_dict())
+    #     return s3_path
     
     def get_global_bio(self, user_id: str, version: int) -> Optional[Bio]:
         """
@@ -724,4 +724,146 @@ class WasabiStorageAdapter:
                 "keywords": [],
                 "has_raw_content": False,
                 "raw_content": ""
-            } 
+            }
+
+    def set_data(self, path: str, data: Any) -> bool:
+        """
+        Store data at a specific path.
+
+        Args:
+            path: Path to store data at
+            data: Data to store
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            data_str = json.dumps(data)
+            response = self.blob_store.put_object(
+                key=path,
+                data=data_str.encode('utf-8'),
+                metadata={"Content-Type": "application/json"}
+            )
+            return response['ResponseMetadata']['HTTPStatusCode'] == 200
+        except Exception as e:
+            logger.error(f"Error storing data at {path}: {e}")
+            return False
+
+    # New storage methods with version support
+    
+    def store_biography(self, user_id: str, bio_type: str, bio_data: Dict, version: int) -> bool:
+        """
+        Store GLOBAL biography data with version information.
+        
+        Args:
+            user_id: The user ID
+            bio_type: The biography type (e.g., 'global', 'status')
+            bio_data: The full biography data as a dictionary
+            version: The L1 version number
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Ensure the bio_data has version information
+        bio_data = bio_data.copy()  # Make a copy to avoid modifying the original
+        bio_data['version'] = version
+        bio_data['user_id'] = user_id
+        
+        # Create a path with version information
+        bio_id = f"{bio_type}_v{version}"
+        object_key = self._get_object_key(BIOS_PREFIX, user_id, bio_id)
+        
+        try:
+            self.store_json(object_key, bio_data)
+            return True
+        except Exception as e:
+            logger.error(f"Error storing biography data: {e}")
+            return False
+    
+    def store_cluster_data(self, user_id: str, cluster_id: str, cluster_data: Dict, version: int) -> bool:
+        """
+        Store cluster data with version information.
+        
+        Args:
+            user_id: The user ID
+            cluster_id: The cluster ID
+            cluster_data: The full cluster data as a dictionary
+            version: The L1 version number
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Ensure the cluster_data has version information
+        cluster_data = cluster_data.copy()  # Make a copy to avoid modifying the original
+        cluster_data['version'] = version
+        cluster_data['user_id'] = user_id
+        
+        # Create a path with version and ID information
+        object_id = f"{cluster_id}_v{version}"
+        object_key = self._get_object_key(CLUSTERS_PREFIX, user_id, object_id)
+        
+        try:
+            self.store_json(object_key, cluster_data)
+            return True
+        except Exception as e:
+            logger.error(f"Error storing cluster data: {e}")
+            return False
+    
+    def store_shade_data(self, user_id: str, shade_id: str, shade_data: Dict, version: int) -> bool:
+        """
+        Store shade data with version information.
+        
+        Args:
+            user_id: The user ID
+            shade_id: The shade ID
+            shade_data: The full shade data as a dictionary
+            version: The L1 version number
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Ensure the shade_data has version information
+        shade_data = shade_data.copy()  # Make a copy to avoid modifying the original
+        shade_data['version'] = version
+        shade_data['user_id'] = user_id
+        
+        # Create a path with version and ID information
+        object_id = f"{shade_id}_v{version}"
+        object_key = self._get_object_key(SHADES_PREFIX, user_id, object_id)
+        
+        try:
+            self.store_json(object_key, shade_data)
+            return True
+        except Exception as e:
+            logger.error(f"Error storing shade data: {e}")
+            return False
+    
+    def store_chunk_topics(self, user_id: str, chunk_topics: Dict, version: int) -> bool:
+        """
+        Store chunk topics data with version information.
+        
+        Args:
+            user_id: The user ID
+            chunk_topics: The chunk topics data as a dictionary
+            version: The L1 version number
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Add version information
+        data = {
+            'user_id': user_id,
+            'version': version,
+            'chunk_topics': chunk_topics
+        }
+        
+        # Create a path with version information
+        object_id = f"topics_v{version}"
+        object_key = f"{TOPICS_PREFIX}{user_id}/{object_id}.json"
+        
+        try:
+            self.store_json(object_key, data)
+            return True
+        except Exception as e:
+            logger.error(f"Error storing chunk topics data: {e}")
+            return False 

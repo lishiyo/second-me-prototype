@@ -172,13 +172,13 @@ class L1Manager:
             self.logger.info(f"Generated global biography successfully")
             
             # 3. Store L1 data in Wasabi and PostgreSQL
-            # self._store_l1_data(
-            #     user_id=user_id,
-            #     bio=bio,
-            #     clusters=clusters,
-            #     chunk_topics=chunk_topics,
-            #     shades=merged_shades_result.merge_shade_list if merged_shades_result.success else []
-            # )
+            self._store_l1_data(
+                user_id=user_id,
+                bio=bio,
+                clusters=clusters,
+                chunk_topics=chunk_topics,
+                shades=merged_shades_result.merge_shade_list if merged_shades_result.success else []
+            )
             
             # 4. Build result object
             result = L1GenerationResult(
@@ -347,6 +347,7 @@ class L1Manager:
                     ]
                     
                     # Store in Weaviate (vector DB)
+                    # TODO: this is still missing from weaviate_adapter
                     self.weaviate_adapter.store_cluster(
                         user_id=user_id,
                         cluster_id=cluster_id,
