@@ -11,9 +11,10 @@ import uuid
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple, Union
 from datetime import datetime
+import re
 
 from app.models.l1.note import Note
-from app.models.l1.shade import L1Shade
+from app.models.l1.shade import L1Shade, ShadeTimeline
 from app.services.llm_service import LLMService
 from app.providers.l1.wasabi_adapter import WasabiStorageAdapter
 
@@ -21,7 +22,45 @@ logger = logging.getLogger(__name__)
 
 # LLM Prompt Templates
 SYS_SHADE = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively.
-"""
+You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
+Now you need to help complete the following tasks:
+
+The user will provide you with parts of their personal private memories [Memory], which may include:
+- **Personal Creations**:
+These notes may record small episodes from the user's life, or lyrical writings to express inner feelings, as well as some spontaneous essays that may be inspired, and even some meaningless content.
+- **Online Excerpts**:
+Information copied by the user from the internet, which the user may consider worth saving, or may have saved on a whim. 
+
+These user-provided memories should contain a main component concerning the user's interests or hobbies, or at least some connection between them, ultimately reflecting a certain interest or preference area of the user.
+
+Your task is to analyze these memories to determine the user's interest or hobby and attempt to generate the following content based on that interest:
+1. **Domain Name**: First, you need to describe the field related to this interest or hobby.
+2. **Aspect Name**: You need to guess the potential role name the user might play in this field. Here are some good examples of role names: Bookworm, Music Junkie, Fashionista, Fitness Guru.
+3. **Icon**: You need to choose an icon to represent this role name. For example, if the role name is "Hardworking," the icon could be "🏋️".
+4. **Domain Description**: Provide a brief conclusion and highlights the specific elements or topics.
+5. **Domain Content**: In this section, provide a detailed description of the specific activities or engagements the user has had within this domain. If the user has extensive content related to this area, it can be organized into multiple sub-domains. Present the information in an organized and logical manner, avoiding repetitive descriptions. Additionally, try to include specific entities, events, or individuals mentioned by the user, rather than providing only high-level summaries of the domain.
+6. **Domain Timeline**: 
+In this section, list the evolution timeline of the user's interest in this field. Each element in the timeline should include the following fields:
+- **createTime**: The date the event occurred, in the format [YYYY-MM-DD].
+- **refMemoryId**: The memory ID corresponding to the event.
+- **description**: A brief description of the event. The description should be as concise and clear as possible, avoiding excessive length.
+
+You should generate follow format:
+{
+    "domainName": "xxx",
+    "aspect": "xxx",
+    "icon": "xxx",
+    "domainDesc": "xxx",
+    "domainContent": "xxx",
+    "domainTimelines": [
+        {
+            "createTime": "xxx",
+            "refMemoryId": xxx,
+            "description": "xxx"
+        },
+        xxx
+    ]
+}"""
 
 USR_SHADE = """
 I'll provide you with parts of personal private memories, which may include personal creations or online excerpts that reflect certain interests or preferences.
@@ -58,49 +97,48 @@ Format your response as a JSON object with the following structure:
 }}
 """
 
-SYS_MERGE = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
-"""
+# Import SHADE_MERGE_PROMPT from lpm_kernel's implementation
+SHADE_MERGE_PROMPT = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
 
-USR_MERGE = """
+You now need to assist with the following task:
+
 The user will provide you with multiple (>2) analysis contents regarding different areas of interest. 
 However, we now consider these areas of interest to be quite similar or have the potential to be merged. 
 Therefore, we need you to help merge these various analyzed interest domains. Your job is to identify the commonalities among these user interest analysis contents, extract a more general common interest domain, and then supplement relevant fields in this newly extracted common interest domain using the provided information from the original analyses.
 
 Both the input user interest domain analysis contents and your output of the new common interest domain analysis result must follow this structure:
 ---
-**[Name]**: Interest Domain Name  
-**[Aspect]**: Interest Domain Aspect  
-**[Icon]**: The icon that best represents this interest  
-**[Description]**: Brief description of the user's interests in this area  
-**[Content]**: Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning  
+**[Name]**: {Interest Domain Name}  
+**[Aspect]**: {Interest Domain Aspect}  
+**[Icon]**: {The icon that best represents this interest}  
+**[Description]**: {Brief description of the user's interests in this area}  
+**[Content]**: {Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning}  
 ---
-**[Timelines]**: The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs  
-- {{CreateTime}}, {{BriefDesc}}, {{refMemoryId}}  
+**[Timelines]**: {The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs}  
+- {CreateTime}, {BriefDesc}, {refMemoryId}  
 - xxxx  
 
 You need to try to merge the interests into an appropriate new interest domain, and then write the corresponding analysis result from the perspective of this new field.
 
-Shades:
-{shades}
-
 Your generated content should meet the following structure:
-{{
+{
     "newInterestName": "xxx", 
     "newInterestAspect": "xxx", 
     "newInterestIcon": "xxx", 
     "newInterestDesc": "xxx", 
     "newInterestContent": "xxx", 
     "newInterestTimelines": [ 
-        {{
+        {
             "createTime": "xxx",
-            "refMemoryId": "xxx",
+            "refMemoryId": xxx,
             "description": "xxx"
-        }},
-        ...
+        },
+        xxx
     ] 
-}}"""
+}"""
 
-SYS_IMPROVE = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
+# Import SHADE_IMPROVE_PROMPT from lpm_kernel's implementation
+SHADE_IMPROVE_PROMPT = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
 
 Now you need to help complete the following task:
 
@@ -115,9 +153,7 @@ The user will provide you a analysis result of a specific area of interest base 
 **[Timelines]**  {The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs}
 - {CreateTime}, {BriefDesc}, {refMemoryId}
 - xxxx
-"""
 
-USR_IMPROVE = """
 Now the user has recently added new memories. You need to appropriately update the previous analysis results based on these newly added memories and the previous memories. 
 
 You need to follow these steps for modification:
@@ -127,29 +163,19 @@ You need to follow these steps for modification:
     2.2 The Content section can be relatively longer, so you can make appropriate adjustments to the Content based on the new memory information. If it's an entirely new part under this interest domain, you can supplement this content for the update. The modification length can be slightly longer than the Description section.
     2.3 For the Timeline section, follow the structure of the Pre-Version analysis results, and add the relevant memory timeline records.
 
-Existing Shade Info:
-{old_shade}
-
-Recent Memories:
-{new_memories}
-
-You should generate the following format:
-{{
-    "improveDesc": "xxx", 
-    "improveContent": "xxx", 
-    "improveTimelines": [
-        {{
+You should generate follow format:
+{
+    "improveDesc": "xxx", # if no relevant new memories, this field should be None  
+    "improveContent": "xxx", # if no relevant new memories, this field should be None  
+    "improveTimelines": [ # if no relevant new memories, this field should be empty list
+        {
             "createTime": "xxx",
-            "refMemoryId": "xxx",
+            "refMemoryId": xxx,
             "description": "xxx"
-        }},
-        ...
-    ]
-}}
-
-Note: If no relevant new memories are found, set "improveDesc" and "improveContent" to null and "improveTimelines" to an empty list.
-"""
-
+        },
+        xxx
+    ] # For the improveTimeline field, you only need to add new timeline records for the new memory, and the existing timeline records are generated here.
+}"""
 
 class ShadeGenerator:
     """
@@ -232,15 +258,17 @@ class ShadeGenerator:
         Returns:
             Parsed JSON dictionary or default_res if parsing fails
         """
-        import re
-        
         matches = re.findall(pattern, content, re.DOTALL)
         if not matches:
             logger.error(f"No JSON found: {content}")
             return default_res
-            
+        
         try:
-            json_res = json.loads(matches[0])
+            # Preprocess the JSON string to handle Python's None literal
+            json_str = matches[0]
+            # Replace Python's None with JSON's null
+            json_str = re.sub(r'\bNone\b', 'null', json_str)
+            json_res = json.loads(json_str)
         except Exception as e:
             logger.error(f"JSON parse error: {str(e)}")
             logger.error(f"Content: {content}")
@@ -383,6 +411,8 @@ Domain Timelines:
             shift_pattern = r"\{.*\}"
             shift_perspective_result = self.__parse_json_response(content, shift_pattern)
             
+            logger.info(f"__add_second_view_info: shift_perspective_result: {shift_perspective_result}")
+
             if shift_perspective_result:
                 # Add second view info to shade with correctly named parameters
                 shade.add_second_view(
@@ -419,7 +449,7 @@ Domain Timelines:
             logger.error(f"Failed to parse the shade generate result: {content}")
             return None
                 
-        logger.info(f"Shade Generate Result: {shade_raw_info}")
+        logger.info(f"__shade_initial_postprocess! parsed json response: {shade_raw_info}")
         
         # Extract data mapping LPM Kernel fields to ours
         name = shade_raw_info.get("domainName", "")
@@ -591,15 +621,16 @@ Domain Timelines:
             # Format documents for prompt using Note's to_str method
             user_prompt = "\n\n".join([note.to_str() for note in notes])
             
-            # Build message like LPM Kernel
-            shade_generate_message = self._build_message(SYS_SHADE, USR_SHADE.format(documents=user_prompt))
+            # Build message like LPM Kernel - IMPORTANT: Pass the raw user_prompt directly
+            # to match their implementation which uses SHADE_INITIAL_PROMPT not USR_SHADE
+            shade_generate_message = self._build_message(SYS_SHADE, user_prompt)
             
             logger.info(f"Generating shade for {len(notes)} notes")
             # Use call_with_retry with our model_params like LPM Kernel
             response = self.llm_service.call_with_retry(shade_generate_message, model_params=self.model_params)
             content = response.choices[0].message.content
             
-            logger.info(f"Shade Generate Result: {content}")
+            logger.info(f"_initial_shade_process: OpenAI content: {content}")
             # Use our postprocessing method
             return self.__shade_initial_postprocess(content, user_id, notes)
             
@@ -628,6 +659,7 @@ Domain Timelines:
     def __shade_merge_postprocess(self, content: str, user_id: str, shade_objects: List[L1Shade]) -> Optional[L1Shade]:
         """
         Parse the merged shade response and create a new merged shade.
+        Matches lpm_kernel's __shade_merge_postprocess implementation.
         
         Args:
             content: LLM response content
@@ -637,167 +669,73 @@ Domain Timelines:
         Returns:
             New merged L1Shade or None if processing fails
         """
-        # Parse the response
+        # Parse the response using the same pattern as lpm_kernel
         shade_merge_pattern = r"\{.*\}"
-        shade_raw_info = self.__parse_json_response(content, shade_merge_pattern)
+        shade_merge_info = self.__parse_json_response(content, shade_merge_pattern)
         
-        if not shade_raw_info:
+        if not shade_merge_info:
             logger.error(f"Failed to parse the shade merge result: {content}")
             return None
                 
-        logger.info(f"Shade Merge Result: {shade_raw_info}")
-        logger.info(f"Shade Merge Result: {shade_raw_info}")
+        logger.info(f"Shade Merge Result: {shade_merge_info}")
         
-        # Extract data mapping LPM Kernel fields to ours
-        name = shade_raw_info.get("newInterestName", "")
-        if not name and "name" in shade_raw_info:  # Fallback to our naming
-            name = shade_raw_info.get("name", "")
-            
-        # Get aspect and icon
-        aspect = shade_raw_info.get("newInterestAspect", "")
-        if not aspect and "aspect" in shade_raw_info:
-            aspect = shade_raw_info.get("aspect", "")
-            
-        icon = shade_raw_info.get("newInterestIcon", "")
-        if not icon and "icon" in shade_raw_info:
-            icon = shade_raw_info.get("icon", "")
-            
-        # Extract the descriptions and content
-        desc_third_view = shade_raw_info.get("newInterestDesc", "")
-        if not desc_third_view and "desc_third_view" in shade_raw_info:
-            desc_third_view = shade_raw_info.get("desc_third_view", "")
+        # Extract fields using the same structure as lpm_kernel
+        # Create a shade with the merged data
+        merged_shade = L1Shade(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            name=shade_merge_info.get("newInterestName", ""),
+            aspect=shade_merge_info.get("newInterestAspect", ""),
+            icon=shade_merge_info.get("newInterestIcon", ""),
+            desc_third_view=shade_merge_info.get("newInterestDesc", ""),
+            content_third_view=shade_merge_info.get("newInterestContent", ""),
+            summary=shade_merge_info.get("newInterestDesc", ""),  # Use desc as summary
+        )
         
-        content_third_view = shade_raw_info.get("newInterestContent", "")
-        if not content_third_view and "content_third_view" in shade_raw_info:
-            content_third_view = shade_raw_info.get("content_third_view", "")
-            
-        # For compatibility with our existing format
-        summary = content_third_view
-        if not summary and "summary" in shade_raw_info:
-            summary = shade_raw_info.get("summary", "")
-            
-        # Extract confidence differently depending on format
-        confidence = 0.0
-        # Sum the confidence of all merged shades
-        for shade in shade_objects:
-            confidence += shade.confidence
-        # Average confidence
-        if shade_objects:
-            confidence = confidence / len(shade_objects)
-            
-        # Get combined timelines from either format
+        # Process timelines the same way lpm_kernel does
         timelines = []
-        if "newInterestTimelines" in shade_raw_info:
-            timelines = shade_raw_info.get("newInterestTimelines", [])
-        elif "timelines" in shade_raw_info:
-            timelines = shade_raw_info.get("timelines", [])
+        for timeline in shade_merge_info.get("newInterestTimelines", []):
+            # Create timeline entries in metadata
+            timeline_entry = {
+                "createTime": timeline.get("createTime", ""),
+                "refMemoryId": timeline.get("refMemoryId", ""),
+                "description": timeline.get("description", ""),
+                "isNew": True
+            }
+            timelines.append(timeline_entry)
         
-        # If timelines is empty, combine timelines from original shades
-        if not timelines:
-            # Combine timelines from all source shades
-            all_timeline_entries = []
-            for shade in shade_objects:
-                if hasattr(shade, 'metadata') and 'timelines' in shade.metadata:
-                    all_timeline_entries.extend(shade.metadata['timelines'])
-                    
-            # Remove duplicates based on refId (if present) or createTime + description
-            seen_refs = set()
-            unique_timelines = []
-            
-            for entry in all_timeline_entries:
-                # Check if entry has refId, refMemoryId, or createTime
-                ref_id = entry.get('refId') or entry.get('refMemoryId')
-                create_time = entry.get('createTime')
-                
-                if ref_id and ref_id not in seen_refs:
-                    seen_refs.add(ref_id)
-                    unique_timelines.append(entry)
-                elif not ref_id and create_time:
-                    # Use combination of time and description as identifier
-                    desc = entry.get('description', '')
-                    identifier = f"{create_time}:{desc}"
-                    if identifier not in seen_refs:
-                        seen_refs.add(identifier)
-                        unique_timelines.append(entry)
-                        
-            timelines = unique_timelines
-            
-        # logger.info(f"EMBEDDING DEBUG: Merging {len(shade_objects)} shades, attempting to calculate center embedding")
-            
-        # Calculate center embedding from merged shades
+        # Update metadata with timelines
+        merged_shade.metadata["timelines"] = timelines
+        
+        # Calculate and add center embedding from merged shades if possible
         try:
-            center_embedding = self._calculate_merged_center_embedding(shade_objects)
-            if center_embedding is not None:
-                logger.info(f": Successfully calculated center embedding for merged shade, length: {len(center_embedding)}")
-            else:
-                logger.error("EMBEDDING DEBUG: Failed to calculate center embedding for merged shade")
-        except Exception as e:
-            logger.error(f"EMBEDDING DEBUG: Error calculating center embedding for merged shade: {str(e)}", exc_info=True)
-            center_embedding = None
-        
-        # Store merged shade data in Wasabi
-        # Collect all original shade IDs
-        original_shade_ids = [shade.id for shade in shade_objects]
-        
-        # Create metadata dictionary
-        metadata = {
-            "original_shade_ids": original_shade_ids,
-            "merger_time": datetime.utcnow().isoformat(),
-            "cluster_size": sum(
-                shade.metadata.get("cluster_size", 1) 
-                for shade in shade_objects 
-                if hasattr(shade, "metadata")
-            ),
-            "timelines": timelines
-        }
-        
-        # Add center_embedding to metadata and merged_shade_data if available
-        merged_shade_data = {
-            "name": name,
-            "summary": summary,
-            "confidence": confidence,
-            "aspect": aspect,
-            "icon": icon,
-            "desc_third_view": desc_third_view,
-            "content_third_view": content_third_view,
-            "original_shade_ids": original_shade_ids
-        }
-        
-        if center_embedding is not None:
-            metadata["center_embedding"] = center_embedding
-            merged_shade_data["center_embedding"] = center_embedding
-            # logger.info(f"EMBEDDING DEBUG: Added center_embedding to metadata and merged_shade_data, length: {len(center_embedding)}")
-        
-        # Store in Wasabi
-        s3_path = self._store_merged_shade_data(user_id, merged_shade_data)
-        
-        # Create shade object with all the fields
-        shade_kwargs = {
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "name": name,
-            "summary": summary,
-            "confidence": confidence,
-            "metadata": metadata,
-            "aspect": aspect,
-            "icon": icon,
-            "desc_third_view": desc_third_view,
-            "content_third_view": content_third_view,
-        }
-        
-        # Only add s3_path if the class accepts it
-        import inspect
-        if 's3_path' in inspect.signature(L1Shade.__init__).parameters:
-            shade_kwargs["s3_path"] = s3_path
+            # Combine center embeddings from each shade
+            total_embedding = None
+            total_weight = 0
             
-        # Create shade object
-        shade = L1Shade(**shade_kwargs)
+            for shade in shade_objects:
+                if "center_embedding" in shade.metadata and shade.metadata["center_embedding"]:
+                    weight = shade.metadata.get("cluster_size", 1)
+                    embedding = np.array(shade.metadata["center_embedding"])
+                    
+                    if total_embedding is None:
+                        total_embedding = embedding * weight
+                    else:
+                        total_embedding += embedding * weight
+                        
+                    total_weight += weight
+            
+            if total_embedding is not None and total_weight > 0:
+                merged_shade.metadata["center_embedding"] = (total_embedding / total_weight).tolist()
+                merged_shade.metadata["cluster_size"] = total_weight
+        except Exception as e:
+            logger.error(f"Error calculating merged embedding: {str(e)}")
         
-        # Add second-person view information
-        shade = self.__add_second_view_info(shade)
+        # Add second-person view information, matching lpm_kernel approach
+        merged_shade = self.__add_second_view_info(merged_shade)
         
-        logger.info(f"Generated merged shade: {shade.name} with confidence {shade.confidence}")
-        return shade
+        logger.info(f"Generated merged shade: {merged_shade.name}")
+        return merged_shade
 
     def _merge_shades_process(
         self,
@@ -833,16 +771,16 @@ Domain Timelines:
                 logger.warning("No valid shades for merging")
                 return None
             
-            # Format shades for prompt, matching lpm_kernel's approach
-            shades_text = self._format_shades_for_prompt(shade_objects)
+            # Format shades for prompt, using the exact same approach as lpm_kernel
+            user_prompt = "\n\n".join(
+                [
+                    f"User Interest Domain {i} Analysis:\n{shade.to_str()}"
+                    for i, shade in enumerate(shade_objects)
+                ]
+            )
             
-            # Generate merged shade using LLM, matching lpm_kernel's approach
-            try:
-                merge_shades_message = self._build_message(SYS_MERGE, USR_MERGE.format(shades=shades_text))
-            except KeyError as e:
-                logger.error(f"Error formatting merge message: {str(e)}")
-                logger.debug(f"USR_MERGE template: {USR_MERGE}")
-                return None
+            # Use SHADE_MERGE_PROMPT to match lpm_kernel's implementation
+            merge_shades_message = self._build_message(SHADE_MERGE_PROMPT, user_prompt)
             
             logger.info(f"Merging {len(shade_objects)} shades")
             response = self.llm_service.call_with_retry(merge_shades_message, model_params=self.model_params)
@@ -880,89 +818,36 @@ Domain Timelines:
         logger.info(f"Shade Improve Result: {improved_data}")
         
         # Extract improved data using LPM Kernel field names specifically
-        improved_name = old_shade.name
-        
-        # Get descriptions and content updates - prioritize LPM Kernel naming
-        improved_desc_third_view = old_shade.desc_third_view
         if "improveDesc" in improved_data and improved_data["improveDesc"] is not None:
-            improved_desc_third_view = improved_data.get("improveDesc")
+            old_shade.desc_third_view = improved_data.get("improveDesc")
+            # Also update summary to match description for compatibility
+            old_shade.summary = improved_data.get("improveDesc")
         
-        improved_content_third_view = old_shade.content_third_view
         if "improveContent" in improved_data and improved_data["improveContent"] is not None:
-            improved_content_third_view = improved_data.get("improveContent")
-        
-        # Update summary from content if available
-        improved_summary = improved_content_third_view
-        
-        improved_confidence = old_shade.confidence
-        
-        # Get new timelines - prioritize LPM Kernel naming
-        new_timelines = []
-        if "improveTimelines" in improved_data:
-            new_timelines = improved_data.get("improveTimelines", [])
-        
-        # Update the shade with improved data
-        updated_shade_data = {
-            "id": old_shade.id,
-            "user_id": user_id,
-            "name": improved_name,
-            "summary": improved_summary,
-            "confidence": improved_confidence,
-            "metadata": old_shade.metadata.copy() if hasattr(old_shade, "metadata") else {},
-            "aspect": old_shade.aspect,
-            "icon": old_shade.icon,
-            "desc_third_view": improved_desc_third_view,
-            "content_third_view": improved_content_third_view,
-            "desc_second_view": old_shade.desc_second_view,
-            "content_second_view": old_shade.content_second_view
-        }
-        
-        # Add s3_path if it exists in the original shade
-        if hasattr(old_shade, "s3_path") and old_shade.s3_path:
-            updated_shade_data["s3_path"] = old_shade.s3_path
-        
-        # Add new timelines to metadata if available
-        if "metadata" in updated_shade_data and "timelines" in updated_shade_data["metadata"]:
-            existing_timelines = updated_shade_data["metadata"]["timelines"]
-        else:
-            if "metadata" not in updated_shade_data:
-                updated_shade_data["metadata"] = {}
-            existing_timelines = []
-        
-        updated_shade_data["metadata"]["timelines"] = existing_timelines + new_timelines
-        
-        # Create new shade object
-        improved_shade = L1Shade(**updated_shade_data)
-        
-        # Store improved shade data if significant changes made
-        # TODO: don't do this here yet?
-        if (improved_summary != old_shade.summary or 
-            improved_desc_third_view != old_shade.desc_third_view or 
-            improved_content_third_view != old_shade.content_third_view or
-            new_timelines):
-            improved_shade_dict = {
-                "name": improved_shade.name,
-                "summary": improved_shade.summary,
-                "confidence": improved_shade.confidence,
-                "timelines": updated_shade_data["metadata"].get("timelines", []),
-                "aspect": improved_shade.aspect,
-                "icon": improved_shade.icon,
-                "desc_third_view": improved_shade.desc_third_view,
-                "content_third_view": improved_shade.content_third_view
-            }
-            s3_path = self._store_improved_shade_data(user_id, improved_shade_dict, new_notes)
+            old_shade.content_third_view = improved_data.get("improveContent")
             
-            # Update s3_path if the model accepts it
-            if hasattr(improved_shade, "s3_path"):
-                improved_shade.s3_path = s3_path
+        # Process timelines in the lpm_kernel style - create ShadeTimeline objects
+        # and add them to the shade's timelines list
+        if "improveTimelines" in improved_data and improved_data["improveTimelines"]:
+            new_timelines = []
+            for timeline_data in improved_data.get("improveTimelines", []):
+                # Create ShadeTimeline object from the data
+                timeline = ShadeTimeline.from_raw_format(timeline_data)
+                new_timelines.append(timeline)
+            
+            # Add to the shade's timelines list
+            old_shade._timelines.extend(new_timelines)
+            
+            # Update metadata for serialization
+            old_shade._sync_timelines_to_metadata()
         
         # Update second-person views if third-person views changed
-        if (improved_desc_third_view != old_shade.desc_third_view or 
-            improved_content_third_view != old_shade.content_third_view):
-            improved_shade = self.__add_second_view_info(improved_shade)
+        if ("improveDesc" in improved_data and improved_data["improveDesc"] is not None) or \
+           ("improveContent" in improved_data and improved_data["improveContent"] is not None):
+            old_shade = self.__add_second_view_info(old_shade)
         
-        logger.info(f"Improved shade: {improved_shade.name}")
-        return improved_shade
+        logger.info(f"Improved shade: {old_shade.name}")
+        return old_shade
     
     def _improve_shade_process(
         self,
@@ -1000,21 +885,21 @@ Domain Timelines:
                     logger.warning(f"Invalid old_shade dictionary: {old_shade}")
                     return self._initial_shade_process(user_id, new_notes)
             
-            # Format the existing shade info and new notes for prompt
-            old_shade_text = self._format_shade_for_improvement(old_shade)
-            new_notes_text = self._format_new_notes_for_improvement(new_notes)
+            # Format the existing shade info and new notes for prompt using lpm_kernel approach
+            # Use to_str() to match lpm_kernel formatting style
+            old_shade_str = old_shade.to_str()
+            recent_memories_str = "\n\n".join([memory.to_str() for memory in new_notes])
             
             # Generate improved shade using LLM
-            # Use _build_message like LPM Kernel
-            try:
-                shade_improve_message = self._build_message(
-                    SYS_IMPROVE, 
-                    USR_IMPROVE.format(old_shade=old_shade_text, new_memories=new_notes_text)
-                )
-            except KeyError as e:
-                logger.error(f"Error formatting improve message: {str(e)}")
-                logger.debug(f"USR_IMPROVE template: {USR_IMPROVE}")
-                return old_shade
+            # Use the same prompt approach as lpm_kernel
+            user_prompt = f""" Original Shade Info:
+{old_shade_str}
+
+Recent Memories:
+{recent_memories_str}
+"""
+            # Use _build_message with SHADE_IMPROVE_PROMPT directly like lpm_kernel
+            shade_improve_message = self._build_message(SHADE_IMPROVE_PROMPT, user_prompt)
             
             logger.info(f"Improving shade with {len(new_notes)} new notes")
             # Use call_with_retry with model_params
@@ -1057,8 +942,10 @@ Domain Timelines:
             Parsed shade data dictionary
         """
         try:
+            # Preprocess the content to handle Python's None literal
+            content_fixed = re.sub(r'\bNone\b', 'null', content)
             # Try to parse as JSON directly
-            data = json.loads(content)
+            data = json.loads(content_fixed)
             return {
                 "name": data.get("name", "Unknown Shade"),
                 "summary": data.get("summary", ""),
@@ -1074,6 +961,8 @@ Domain Timelines:
                 
                 if start_idx >= 0 and end_idx > start_idx:
                     json_str = content[start_idx:end_idx]
+                    # Preprocess the JSON string to handle Python's None literal
+                    json_str = re.sub(r'\bNone\b', 'null', json_str)
                     data = json.loads(json_str)
                     return {
                         "name": data.get("name", "Unknown Shade"),
@@ -1099,8 +988,10 @@ Domain Timelines:
             List of parsed shade data dictionaries
         """
         try:
+            # Preprocess the content to handle Python's None literal
+            content_fixed = re.sub(r'\bNone\b', 'null', content)
             # Try to parse as JSON directly
-            data = json.loads(content)
+            data = json.loads(content_fixed)
             if isinstance(data, list):
                 return [
                     {
@@ -1121,6 +1012,8 @@ Domain Timelines:
                 
                 if start_idx >= 0 and end_idx > start_idx:
                     json_str = content[start_idx:end_idx]
+                    # Preprocess the JSON string to handle Python's None literal
+                    json_str = re.sub(r'\bNone\b', 'null', json_str)
                     data = json.loads(json_str)
                     return [
                         {
@@ -1450,8 +1343,10 @@ Domain Timelines:
             Parsed improved shade data dictionary
         """
         try:
+            # Preprocess the content to handle Python's None literal
+            content_fixed = re.sub(r'\bNone\b', 'null', content)
             # Try to parse as JSON directly
-            data = json.loads(content)
+            data = json.loads(content_fixed)
             return {
                 "improved_name": data.get("improved_name", ""),
                 "improved_summary": data.get("improved_summary", ""),
@@ -1467,6 +1362,8 @@ Domain Timelines:
                 
                 if start_idx >= 0 and end_idx > start_idx:
                     json_str = content[start_idx:end_idx]
+                    # Preprocess the JSON string to handle Python's None literal
+                    json_str = re.sub(r'\bNone\b', 'null', json_str)
                     data = json.loads(json_str)
                     return {
                         "improved_name": data.get("improved_name", ""),

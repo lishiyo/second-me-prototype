@@ -822,9 +822,6 @@ def run_generate_shades():
             logger.warning("No notes or memory items found. Cannot continue the test.")
             return False
         
-        # Add informational message about embeddings
-        logger.info("Note: During testing, some shades may not have embeddings, which will generate warnings.")
-        
         #--------------------------------------------------------------------------
         # 4. Generate topics/clusters for shades
         #--------------------------------------------------------------------------
@@ -1013,7 +1010,8 @@ def run_generate_shades():
             shades_to_merge = [shade_info["shade"] for shade_info in initial_shades]
             logger.info(f"Merging {len(shades_to_merge)} shades using shade_merger")
             
-            merged_shades_result = shade_merger.merge_shades(user_id=user_id, shades=shades_to_merge)
+            # Use test_mode=True to force merging for testing purposes
+            merged_shades_result = shade_merger.merge_shades(user_id=user_id, shades=shades_to_merge, test_mode=True)
             
             if hasattr(merged_shades_result, 'success'):
                 logger.info(f"Merged shades success: {merged_shades_result.success}")
@@ -1027,7 +1025,7 @@ def run_generate_shades():
                         sample_merged = merged_shades[0]
                         logger.info("\nSample merged shade details:")
                         for key, value in sample_merged.items():
-                            if key != 'metadata':
+                            if key != 'metadata' and key != 'centerEmbedding':
                                 logger.info(f"  {key}: {value}")
                         
                         # Log metadata summary if exists
