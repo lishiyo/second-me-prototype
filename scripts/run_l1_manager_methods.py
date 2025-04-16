@@ -845,8 +845,7 @@ def run_generate_shades():
         #--------------------------------------------------------------------------
         logger.info("\nTEST PATH 1: Initial shade generation (no old shades)...")
         
-        # Get the first two clusters for our tests
-        test_clusters = clusters.get("clusterList", [])[:2]
+        test_clusters = clusters.get("clusterList", [])
         if len(test_clusters) < 2:
             logger.warning("Not enough clusters for testing all paths. Proceeding with limited tests.")
         
@@ -1011,7 +1010,7 @@ def run_generate_shades():
             logger.info(f"Merging {len(shades_to_merge)} shades using shade_merger")
             
             # Use test_mode=True to force merging for testing purposes
-            merged_shades_result = shade_merger.merge_shades(user_id=user_id, shades=shades_to_merge, test_mode=True)
+            merged_shades_result = shade_merger.merge_shades(user_id=user_id, shades=shades_to_merge, test_mode=False)
             
             if hasattr(merged_shades_result, 'success'):
                 logger.info(f"Merged shades success: {merged_shades_result.success}")

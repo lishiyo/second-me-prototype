@@ -39,7 +39,8 @@ Your task is to analyze these memories to determine the user's interest or hobby
 3. **Icon**: You need to choose an icon to represent this role name. For example, if the role name is "Hardworking," the icon could be "🏋️".
 4. **Domain Description**: Provide a brief conclusion and highlights the specific elements or topics.
 5. **Domain Content**: In this section, provide a detailed description of the specific activities or engagements the user has had within this domain. If the user has extensive content related to this area, it can be organized into multiple sub-domains. Present the information in an organized and logical manner, avoiding repetitive descriptions. Additionally, try to include specific entities, events, or individuals mentioned by the user, rather than providing only high-level summaries of the domain.
-6. **Domain Timeline**: 
+6. **Confidence**: A confidence score (0.00-1.00) reflecting how confident you are in this synthesis
+7. **Domain Timeline**: 
 In this section, list the evolution timeline of the user's interest in this field. Each element in the timeline should include the following fields:
 - **createTime**: The date the event occurred, in the format [YYYY-MM-DD].
 - **refMemoryId**: The memory ID corresponding to the event.
@@ -52,6 +53,7 @@ You should generate follow format:
     "icon": "xxx",
     "domainDesc": "xxx",
     "domainContent": "xxx",
+    "confidence": "x.xx",
     "domainTimelines": [
         {
             "createTime": "xxx",
@@ -113,6 +115,7 @@ Both the input user interest domain analysis contents and your output of the new
 **[Icon]**: {The icon that best represents this interest}  
 **[Description]**: {Brief description of the user's interests in this area}  
 **[Content]**: {Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning}  
+**[Confidence]**: {A confidence score (0.00-1.00) reflecting how confident you are in this synthesis}
 ---
 **[Timelines]**: {The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs}  
 - {CreateTime}, {BriefDesc}, {refMemoryId}  
@@ -127,6 +130,7 @@ Your generated content should meet the following structure:
     "newInterestIcon": "xxx", 
     "newInterestDesc": "xxx", 
     "newInterestContent": "xxx", 
+    "newInterestConfidence": "x.xx",
     "newInterestTimelines": [ 
         {
             "createTime": "xxx",
@@ -689,6 +693,7 @@ Domain Timelines:
             icon=shade_merge_info.get("newInterestIcon", ""),
             desc_third_view=shade_merge_info.get("newInterestDesc", ""),
             content_third_view=shade_merge_info.get("newInterestContent", ""),
+            confidence=shade_merge_info.get("newInterestConfidence", 0.0),
             summary=shade_merge_info.get("newInterestDesc", ""),  # Use desc as summary
         )
         

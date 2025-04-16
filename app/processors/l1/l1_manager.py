@@ -148,7 +148,7 @@ class L1Manager:
                             shades.append(shade)
                             self.logger.info(f"Generated shade: {shade.name if hasattr(shade, 'name') else 'Unknown'}")
             
-            self.logger.info(f"Generated {len(shades)} shades")
+            self.logger.info(f"Generated {len(shades)} shades, trying to merge them")
             
             # 2.4 Merge similar shades
             merged_shades_result = self.shade_merger.merge_shades(user_id=user_id, shades=shades)
@@ -171,7 +171,7 @@ class L1Manager:
             )
             self.logger.info(f"Generated global biography successfully")
             
-            # 3. Store L1 data
+            # 3. Store L1 data in Wasabi and PostgreSQL
             self._store_l1_data(
                 user_id=user_id,
                 bio=bio,
