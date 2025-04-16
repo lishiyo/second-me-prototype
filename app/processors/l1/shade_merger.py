@@ -8,7 +8,7 @@ compatible API with lpm_kernel's ShadeMerger class.
 import logging
 from typing import List, Dict, Any, Optional
 
-from app.models.l1.shade import L1Shade
+from app.models.l1.shade import L1Shade, MergedShadeResult
 from app.processors.l1.shade_generator import ShadeGenerator
 
 logger = logging.getLogger(__name__)
@@ -39,41 +39,39 @@ class ShadeMerger:
         """
         self.shade_generator = shade_generator
     
-    def merge_shades(self, user_id: str, shades: List[L1Shade]) -> MergeShadeResult:
+    def merge_shades(self, user_id: str, shades: List[L1Shade]) -> MergedShadeResult:
         """
-        Merge multiple shades into a coherent representation.
+        Merge multiple shades into a single shade, using the ShadeGenerator.
         
         Args:
             user_id: User ID
             shades: List of shades to merge
             
         Returns:
-            MergeShadeResult containing success status and merged shades
+            MergedShadeResult indicating success or failure
         """
         try:
-            if not shades or len(shades) == 0:
-                logger.warning("No shades to merge")
-                return MergeShadeResult(success=False, merge_shade_list=[])
+            # Merge shades using the ShadeGenerator
+            # Note: ShadeGenerator does not have a merge_shades method, but has _merge_shades_process
+            merged_shade = self.shade_generator._merge_shades_process(user_id, shades)
             
-            # Single shade doesn't need merging
-            if len(shades) == 1:
-                shade_dict = shades[0].to_dict() if hasattr(shades[0], 'to_dict') else shades[0]
-                return MergeShadeResult(success=True, merge_shade_list=[shade_dict])
-            
-            # Delegate to ShadeGenerator.merge_shades
-            merged_shades = self.shade_generator.merge_shades(user_id, shades)
-            
-            # Ensure metadata with timelines is included
-            for shade in merged_shades:
-                if "metadata" not in shade:
-                    shade["metadata"] = {}
-                if "timelines" not in shade["metadata"] and "timelines" in shade:
-                    shade["metadata"]["timelines"] = shade.get("timelines", [])
-            
-            return MergeShadeResult(
-                success=True,
-                merge_shade_list=merged_shades
-            )
+            if merged_shade:
+                return MergedShadeResult(
+                    success=True,
+                    merge_shade_list=[merged_shade.to_dict()]
+                )
+            else:
+                logger.error("Failed to merge shades")
+                return MergedShadeResult(
+                    success=False,
+                    merge_shade_list=[],
+                    error="Failed to merge shades"
+                )
+                
         except Exception as e:
             logger.error(f"Error merging shades: {str(e)}", exc_info=True)
-            return MergeShadeResult(success=False, merge_shade_list=[]) 
+            return MergedShadeResult(
+                success=False,
+                merge_shade_list=[],
+                error=f"Error merging shades: {str(e)}"
+            ) 

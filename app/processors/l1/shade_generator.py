@@ -68,14 +68,14 @@ Therefore, we need you to help merge these various analyzed interest domains. Yo
 
 Both the input user interest domain analysis contents and your output of the new common interest domain analysis result must follow this structure:
 ---
-**[Name]**: {Interest Domain Name}  
-**[Aspect]**: {Interest Domain Aspect}  
-**[Icon]**: {The icon that best represents this interest}  
-**[Description]**: {Brief description of the user's interests in this area}  
-**[Content]**: {Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning}  
+**[Name]**: Interest Domain Name  
+**[Aspect]**: Interest Domain Aspect  
+**[Icon]**: The icon that best represents this interest  
+**[Description]**: Brief description of the user's interests in this area  
+**[Content]**: Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning  
 ---
-**[Timelines]**: {The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs}  
-- {CreateTime}, {BriefDesc}, {refMemoryId}  
+**[Timelines]**: The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs  
+- {{CreateTime}}, {{BriefDesc}}, {{refMemoryId}}  
 - xxxx  
 
 You need to try to merge the interests into an appropriate new interest domain, and then write the corresponding analysis result from the perspective of this new field.
@@ -84,21 +84,21 @@ Shades:
 {shades}
 
 Your generated content should meet the following structure:
-{
+{{
     "newInterestName": "xxx", 
     "newInterestAspect": "xxx", 
     "newInterestIcon": "xxx", 
     "newInterestDesc": "xxx", 
     "newInterestContent": "xxx", 
     "newInterestTimelines": [ 
-        {
+        {{
             "createTime": "xxx",
-            "refMemoryId": xxx,
+            "refMemoryId": "xxx",
             "description": "xxx"
-        },
-        xxx
+        }},
+        ...
     ] 
-}"""
+}}"""
 
 SYS_IMPROVE = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
 
@@ -133,19 +133,22 @@ Existing Shade Info:
 Recent Memories:
 {new_memories}
 
-You should generate follow format:
-{
-    "improveDesc": "xxx", # if no relevant new memories, this field should be None  
-    "improveContent": "xxx", # if no relevant new memories, this field should be None  
-    "improveTimelines": [ # if no relevant new memories, this field should be empty list
-        {
+You should generate the following format:
+{{
+    "improveDesc": "xxx", 
+    "improveContent": "xxx", 
+    "improveTimelines": [
+        {{
             "createTime": "xxx",
-            "refMemoryId": xxx,
+            "refMemoryId": "xxx",
             "description": "xxx"
-        },
-        xxx
-    ] # For the improveTimeline field, you only need to add new timeline records for the new memory, and the existing timeline records are generated here.
-}"""
+        }},
+        ...
+    ]
+}}
+
+Note: If no relevant new memories are found, set "improveDesc" and "improveContent" to null and "improveTimelines" to an empty list.
+"""
 
 
 class ShadeGenerator:
@@ -276,7 +279,7 @@ class ShadeGenerator:
             if not (shade_info_list or old_memory_list):
                 # PATH 1: Initial shade processing
                 logger.info(f"Shades initial Process! Current shade have {len(new_memory_list)} memories!")
-                new_shade = self._initial_shade_process(new_memory_list)
+                new_shade = self._initial_shade_process(user_id, new_memory_list)
             elif shade_info_list and old_memory_list:
                 # PATH 2/3: Either merge multiple shades then improve, or just improve a single shade
                 if len(shade_info_list) > 1:
@@ -381,11 +384,11 @@ Domain Timelines:
             shift_perspective_result = self.__parse_json_response(content, shift_pattern)
             
             if shift_perspective_result:
-                # Add second view info to shade
+                # Add second view info to shade with correctly named parameters
                 shade.add_second_view(
-                    domain_desc=shift_perspective_result.get("domainDesc", ""),
-                    domain_content=shift_perspective_result.get("domainContent", ""),
-                    domain_timeline=shift_perspective_result.get("domainTimeline", [])
+                    domainDesc=shift_perspective_result.get("domainDesc", ""),
+                    domainContent=shift_perspective_result.get("domainContent", ""),
+                    domainTimeline=shift_perspective_result.get("domainTimeline", [])
                 )
                 
         except Exception as e:
@@ -447,9 +450,13 @@ Domain Timelines:
             timelines = shade_raw_info.get("domainTimelines", [])
         elif "timelines" in shade_raw_info:
             timelines = shade_raw_info.get("timelines", [])
+        
+        # Calculate center embedding from notes
+        center_embedding = self._calculate_center_embedding_from_notes(notes)
+        # logger.info(f"EMBEDDING DEBUG: Calculated center embedding for new shade: {type(center_embedding)}, length: {len(center_embedding) if center_embedding is not None else 'None'}")
             
-        # Store initial shade data in Wasabi
-        # TODO: don't do this here yet?
+        # Store shade data in Wasabi
+        # TODO: do we do this here?
         s3_path = self._store_shade_data(user_id, {
             "name": name,
             "summary": summary,
@@ -458,14 +465,22 @@ Domain Timelines:
             "aspect": aspect,
             "icon": icon,
             "desc_third_view": desc_third_view,
-            "content_third_view": content_third_view
+            "content_third_view": content_third_view,
+            "center_embedding": center_embedding
         }, notes)
         
-        # Prepare metadata with timelines
+        # Prepare metadata with timelines and embedding
         metadata = {
             "cluster_size": len(notes),
             "timelines": timelines
         }
+        
+        # Add center_embedding to metadata if available
+        if center_embedding is not None:
+            metadata["center_embedding"] = center_embedding
+            # logger.info(f"EMBEDDING DEBUG: Added center_embedding to metadata with length: {len(center_embedding)}")
+        else:
+            logger.error("EMBEDDING DEBUG: Failed to calculate center_embedding for new shade")
         
         # Create shade object with all the fields
         shade_kwargs = {
@@ -491,9 +506,67 @@ Domain Timelines:
         
         # Add second-person view information
         shade = self.__add_second_view_info(shade)
-        
+            
         logger.info(f"Generated shade: {shade.name} with confidence {shade.confidence}")
         return shade
+    
+    def _calculate_center_embedding_from_notes(self, notes: List[Note]) -> Optional[List[float]]:
+        """
+        Calculate a center embedding from the notes.
+        
+        Args:
+            notes: List of notes to calculate embedding from
+            
+        Returns:
+            Center embedding as list of floats, or None if calculation fails
+        """
+        try:
+            # Check if we have notes with embeddings
+            notes_with_embeddings = []
+            for note in notes:
+                if note.embedding is not None and len(note.embedding) > 0:
+                    notes_with_embeddings.append(note)
+            
+            if not notes_with_embeddings:
+                logger.error("EMBEDDING DEBUG: No notes with embeddings found for center calculation")
+                return None
+                
+            # logger.info(f"EMBEDDING DEBUG: Found {len(notes_with_embeddings)}/{len(notes)} notes with embeddings")
+            
+            # Get the first note's embedding to determine vector dimensions
+            first_embedding = np.array(notes_with_embeddings[0].embedding)
+            if len(first_embedding.shape) == 0:
+                logger.error(f"EMBEDDING DEBUG: First note embedding is a scalar: {first_embedding}")
+                return None
+                
+            embedding_dim = first_embedding.shape[0]
+            # logger.info(f"EMBEDDING DEBUG: Using embedding dimension: {embedding_dim}")
+            
+            # Initialize total embedding
+            total_embedding = np.zeros(embedding_dim)
+            
+            # Sum the embeddings
+            for note in notes_with_embeddings:
+                try:
+                    note_embedding = np.array(note.embedding)
+                    if note_embedding.shape[0] != embedding_dim:
+                        logger.warning(f"EMBEDDING DEBUG: Note embedding dimension mismatch: expected {embedding_dim}, got {note_embedding.shape[0]}")
+                        continue
+                        
+                    # Add the embedding
+                    total_embedding += note_embedding
+                except Exception as e:
+                    logger.error(f"EMBEDDING DEBUG: Error processing note embedding: {str(e)}")
+                    continue
+            
+            # Calculate the mean
+            center_embedding = (total_embedding / len(notes_with_embeddings)).tolist()
+            # logger.info(f"EMBEDDING DEBUG: Successfully calculated center embedding of dimension {len(center_embedding)}")
+            return center_embedding
+            
+        except Exception as e:
+            logger.error(f"EMBEDDING DEBUG: Error calculating center embedding from notes: {str(e)}", exc_info=True)
+            return None
     
     def _initial_shade_process(
         self,
@@ -554,112 +627,151 @@ Domain Timelines:
     
     def __shade_merge_postprocess(self, content: str, user_id: str, shade_objects: List[L1Shade]) -> Optional[L1Shade]:
         """
-        Processes the shade merging response, similar to LPM Kernel.
+        Parse the merged shade response and create a new merged shade.
         
         Args:
-            content: Raw LLM response text
-            user_id: User ID for creating the merged shade
-            shade_objects: Original shades used for merging
+            content: LLM response content
+            user_id: User ID
+            shade_objects: List of original shades being merged
             
         Returns:
-            Merged L1Shade object or None if processing fails
+            New merged L1Shade or None if processing fails
         """
-        # Use the same pattern as LPM Kernel
+        # Parse the response
         shade_merge_pattern = r"\{.*\}"
-        merged_shade_info = self.__parse_json_response(content, shade_merge_pattern)
+        shade_raw_info = self.__parse_json_response(content, shade_merge_pattern)
         
-        if not merged_shade_info:
+        if not shade_raw_info:
             logger.error(f"Failed to parse the shade merge result: {content}")
-            return None if len(shade_objects) > 1 else shade_objects[0]
+            return None
+                
+        logger.info(f"Shade Merge Result: {shade_raw_info}")
+        logger.info(f"Shade Merge Result: {shade_raw_info}")
         
-        logger.info(f"Shade Merge Result: {merged_shade_info}")
-        
-        # Extract data using LPM Kernel field names with fallbacks to our naming
-        name = merged_shade_info.get("newInterestName", "")
-        if not name and "name" in merged_shade_info:
-            name = merged_shade_info.get("name", "Merged Shade")
-        
+        # Extract data mapping LPM Kernel fields to ours
+        name = shade_raw_info.get("newInterestName", "")
+        if not name and "name" in shade_raw_info:  # Fallback to our naming
+            name = shade_raw_info.get("name", "")
+            
         # Get aspect and icon
-        aspect = merged_shade_info.get("newInterestAspect", "")
-        icon = merged_shade_info.get("newInterestIcon", "")
-        
+        aspect = shade_raw_info.get("newInterestAspect", "")
+        if not aspect and "aspect" in shade_raw_info:
+            aspect = shade_raw_info.get("aspect", "")
+            
+        icon = shade_raw_info.get("newInterestIcon", "")
+        if not icon and "icon" in shade_raw_info:
+            icon = shade_raw_info.get("icon", "")
+            
         # Extract the descriptions and content
-        desc_third_view = merged_shade_info.get("newInterestDesc", "")
-        content_third_view = merged_shade_info.get("newInterestContent", "")
+        desc_third_view = shade_raw_info.get("newInterestDesc", "")
+        if not desc_third_view and "desc_third_view" in shade_raw_info:
+            desc_third_view = shade_raw_info.get("desc_third_view", "")
         
-        # For compatibility, use content_third_view as summary if available
+        content_third_view = shade_raw_info.get("newInterestContent", "")
+        if not content_third_view and "content_third_view" in shade_raw_info:
+            content_third_view = shade_raw_info.get("content_third_view", "")
+            
+        # For compatibility with our existing format
         summary = content_third_view
-        if not summary and "summary" in merged_shade_info:
-            summary = merged_shade_info.get("summary", "")
-        
+        if not summary and "summary" in shade_raw_info:
+            summary = shade_raw_info.get("summary", "")
+            
+        # Extract confidence differently depending on format
         confidence = 0.0
-        if "confidence" in merged_shade_info:
-            confidence = merged_shade_info.get("confidence", 0.0)
-        
-        # Get timelines from either format
-        timelines = []
-        if "newInterestTimelines" in merged_shade_info:
-            timelines = merged_shade_info.get("newInterestTimelines", [])
-        elif "timelines" in merged_shade_info:
-            timelines = merged_shade_info.get("timelines", [])
-        
-        # Calculate center embedding if available
-        center_embedding = self._calculate_merged_center_embedding(shade_objects)
-                
-        # Gather all timelines from source shades
-        all_timelines = []
+        # Sum the confidence of all merged shades
         for shade in shade_objects:
-            if hasattr(shade, "metadata") and "timelines" in shade.metadata:
-                all_timelines.extend(shade.metadata["timelines"])
-                
-        # Add any new timelines from the LLM response
-        all_timelines.extend(timelines)
-                
-        # Remove potential duplicates (based on refId)
-        unique_timelines = []
-        seen_ref_ids = set()
-        for timeline in all_timelines:
-            ref_id = timeline.get("refId", None)
-            if ref_id and ref_id in seen_ref_ids:
-                continue
-            if ref_id:
-                seen_ref_ids.add(ref_id)
-            unique_timelines.append(timeline)
-                    
-        # Sort timelines by createTime if available
-        sorted_timelines = sorted(
-            unique_timelines,
-            key=lambda x: x.get("createTime", ""),
-            reverse=True
-        )
+            confidence += shade.confidence
+        # Average confidence
+        if shade_objects:
+            confidence = confidence / len(shade_objects)
+            
+        # Get combined timelines from either format
+        timelines = []
+        if "newInterestTimelines" in shade_raw_info:
+            timelines = shade_raw_info.get("newInterestTimelines", [])
+        elif "timelines" in shade_raw_info:
+            timelines = shade_raw_info.get("timelines", [])
         
-        # Store the merged shade data in Wasabi
+        # If timelines is empty, combine timelines from original shades
+        if not timelines:
+            # Combine timelines from all source shades
+            all_timeline_entries = []
+            for shade in shade_objects:
+                if hasattr(shade, 'metadata') and 'timelines' in shade.metadata:
+                    all_timeline_entries.extend(shade.metadata['timelines'])
+                    
+            # Remove duplicates based on refId (if present) or createTime + description
+            seen_refs = set()
+            unique_timelines = []
+            
+            for entry in all_timeline_entries:
+                # Check if entry has refId, refMemoryId, or createTime
+                ref_id = entry.get('refId') or entry.get('refMemoryId')
+                create_time = entry.get('createTime')
+                
+                if ref_id and ref_id not in seen_refs:
+                    seen_refs.add(ref_id)
+                    unique_timelines.append(entry)
+                elif not ref_id and create_time:
+                    # Use combination of time and description as identifier
+                    desc = entry.get('description', '')
+                    identifier = f"{create_time}:{desc}"
+                    if identifier not in seen_refs:
+                        seen_refs.add(identifier)
+                        unique_timelines.append(entry)
+                        
+            timelines = unique_timelines
+            
+        # logger.info(f"EMBEDDING DEBUG: Merging {len(shade_objects)} shades, attempting to calculate center embedding")
+            
+        # Calculate center embedding from merged shades
+        try:
+            center_embedding = self._calculate_merged_center_embedding(shade_objects)
+            if center_embedding is not None:
+                logger.info(f": Successfully calculated center embedding for merged shade, length: {len(center_embedding)}")
+            else:
+                logger.error("EMBEDDING DEBUG: Failed to calculate center embedding for merged shade")
+        except Exception as e:
+            logger.error(f"EMBEDDING DEBUG: Error calculating center embedding for merged shade: {str(e)}", exc_info=True)
+            center_embedding = None
+        
+        # Store merged shade data in Wasabi
+        # Collect all original shade IDs
+        original_shade_ids = [shade.id for shade in shade_objects]
+        
+        # Create metadata dictionary
+        metadata = {
+            "original_shade_ids": original_shade_ids,
+            "merger_time": datetime.utcnow().isoformat(),
+            "cluster_size": sum(
+                shade.metadata.get("cluster_size", 1) 
+                for shade in shade_objects 
+                if hasattr(shade, "metadata")
+            ),
+            "timelines": timelines
+        }
+        
+        # Add center_embedding to metadata and merged_shade_data if available
         merged_shade_data = {
             "name": name,
             "summary": summary,
             "confidence": confidence,
-            "timelines": sorted_timelines,
             "aspect": aspect,
             "icon": icon,
             "desc_third_view": desc_third_view,
-            "content_third_view": content_third_view
-        }
-        
-        if center_embedding is not None:
-            merged_shade_data["center_embedding"] = center_embedding
-        
-        # TODO: do we do this here?
-        s3_path = self._store_merged_shade_data(user_id, merged_shade_data)
-        
-        # Create the merged shade object
-        metadata = {
-            "source_shades": [s.id for s in shade_objects],
-            "timelines": sorted_timelines
+            "content_third_view": content_third_view,
+            "original_shade_ids": original_shade_ids
         }
         
         if center_embedding is not None:
             metadata["center_embedding"] = center_embedding
+            merged_shade_data["center_embedding"] = center_embedding
+            # logger.info(f"EMBEDDING DEBUG: Added center_embedding to metadata and merged_shade_data, length: {len(center_embedding)}")
         
+        # Store in Wasabi
+        s3_path = self._store_merged_shade_data(user_id, merged_shade_data)
+        
+        # Create shade object with all the fields
         shade_kwargs = {
             "id": str(uuid.uuid4()),
             "user_id": user_id,
@@ -669,23 +781,23 @@ Domain Timelines:
             "metadata": metadata,
             "aspect": aspect,
             "icon": icon,
-            "desc_third_view": desc_third_view, 
-            "content_third_view": content_third_view
+            "desc_third_view": desc_third_view,
+            "content_third_view": content_third_view,
         }
         
-        # Only add s3_path if it's used in the model
+        # Only add s3_path if the class accepts it
         import inspect
         if 's3_path' in inspect.signature(L1Shade.__init__).parameters:
             shade_kwargs["s3_path"] = s3_path
-        
-        # Create the merged shade object
-        merged_shade = L1Shade(**shade_kwargs)
+            
+        # Create shade object
+        shade = L1Shade(**shade_kwargs)
         
         # Add second-person view information
-        merged_shade = self.__add_second_view_info(merged_shade)
+        shade = self.__add_second_view_info(shade)
         
-        logger.info(f"Merged shade: {merged_shade.name} with confidence {merged_shade.confidence}")
-        return merged_shade
+        logger.info(f"Generated merged shade: {shade.name} with confidence {shade.confidence}")
+        return shade
 
     def _merge_shades_process(
         self,
@@ -725,7 +837,12 @@ Domain Timelines:
             shades_text = self._format_shades_for_prompt(shade_objects)
             
             # Generate merged shade using LLM, matching lpm_kernel's approach
-            merge_shades_message = self._build_message(SYS_MERGE, USR_MERGE.format(shades=shades_text))
+            try:
+                merge_shades_message = self._build_message(SYS_MERGE, USR_MERGE.format(shades=shades_text))
+            except KeyError as e:
+                logger.error(f"Error formatting merge message: {str(e)}")
+                logger.debug(f"USR_MERGE template: {USR_MERGE}")
+                return None
             
             logger.info(f"Merging {len(shade_objects)} shades")
             response = self.llm_service.call_with_retry(merge_shades_message, model_params=self.model_params)
@@ -737,8 +854,8 @@ Domain Timelines:
             
         except Exception as e:
             logger.error(f"Error in merge shades process: {str(e)}", exc_info=True)
-            return None if len(shades) > 1 else shade_objects[0]
-            
+            return None if len(shades) > 1 else shade_objects[0] if shade_objects else None
+    
     def __shade_improve_postprocess(self, content: str, user_id: str, old_shade: L1Shade, new_notes: List[Note]) -> Optional[L1Shade]:
         """
         Processes the shade improvement response, similar to LPM Kernel.
@@ -868,8 +985,13 @@ Domain Timelines:
             if not new_notes or len(new_notes) == 0:
                 logger.warning("No new notes provided for shade improvement")
                 # Return original shade if no new notes
-                return old_shade if isinstance(old_shade, L1Shade) else L1Shade(**old_shade)
+                return old_shade if isinstance(old_shade, L1Shade) else (L1Shade(**old_shade) if old_shade else None)
             
+            # Guard against None values
+            if old_shade is None:
+                logger.warning("No existing shade provided for improvement")
+                return self._initial_shade_process(user_id, new_notes)
+                
             # Convert dictionary to L1Shade if needed
             if isinstance(old_shade, dict):
                 if 'id' in old_shade and 'name' in old_shade and 'summary' in old_shade:
@@ -884,10 +1006,15 @@ Domain Timelines:
             
             # Generate improved shade using LLM
             # Use _build_message like LPM Kernel
-            shade_improve_message = self._build_message(
-                SYS_IMPROVE, 
-                USR_IMPROVE.format(old_shade=old_shade_text, new_memories=new_notes_text)
-            )
+            try:
+                shade_improve_message = self._build_message(
+                    SYS_IMPROVE, 
+                    USR_IMPROVE.format(old_shade=old_shade_text, new_memories=new_notes_text)
+                )
+            except KeyError as e:
+                logger.error(f"Error formatting improve message: {str(e)}")
+                logger.debug(f"USR_IMPROVE template: {USR_IMPROVE}")
+                return old_shade
             
             logger.info(f"Improving shade with {len(new_notes)} new notes")
             # Use call_with_retry with model_params
@@ -1032,7 +1159,7 @@ Domain Timelines:
                 "center_embedding": shade_data.get("center_embedding"),
                 "timelines": shade_data.get("timelines", [])
             },
-            "notes": [note.to_dict() for note in notes],
+            "notes": self._prepare_notes_for_json(notes),
             "created_at": datetime.now().isoformat()
         }
         
@@ -1041,9 +1168,61 @@ Domain Timelines:
         s3_path = f"l1/shades/{user_id}/{shade_id}.json"
         
         # Store in Wasabi
-        self.wasabi_adapter.store_json(s3_path, complete_data)
+        try:
+            self.wasabi_adapter.store_json(s3_path, complete_data)
+        except TypeError as e:
+            # Handle numpy array serialization error
+            if "not JSON serializable" in str(e):
+                logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
+                # Convert the data to a JSON-compatible format and retry
+                json_compatible_data = self._make_json_serializable(complete_data)
+                self.wasabi_adapter.store_json(s3_path, json_compatible_data)
+            else:
+                # Re-raise if it's not a serialization error
+                raise
         
         return s3_path
+    
+    def _prepare_notes_for_json(self, notes: List[Note]) -> List[Dict[str, Any]]:
+        """
+        Convert notes to a JSON-serializable format.
+        
+        Args:
+            notes: List of Note objects
+            
+        Returns:
+            List of dictionaries with note data
+        """
+        return [self._make_json_serializable(note.to_dict()) for note in notes]
+        
+    def _make_json_serializable(self, obj: Any) -> Any:
+        """
+        Convert an object to a JSON-serializable format.
+        
+        Args:
+            obj: Object to convert
+            
+        Returns:
+            JSON-serializable version of the object
+        """
+        import numpy as np
+        
+        if isinstance(obj, dict):
+            return {k: self._make_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list) or isinstance(obj, tuple):
+            return [self._make_json_serializable(item) for item in obj]
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
+            return self._make_json_serializable(obj.to_dict())
+        else:
+            return obj
     
     def _store_merged_shade_data(self, user_id: str, shade_data: Dict[str, Any]) -> str:
         """
@@ -1073,7 +1252,18 @@ Domain Timelines:
         s3_path = f"l1/merged_shades/{user_id}/{shade_id}.json"
         
         # Store in Wasabi
-        self.wasabi_adapter.store_json(s3_path, complete_data)
+        try:
+            self.wasabi_adapter.store_json(s3_path, complete_data)
+        except TypeError as e:
+            # Handle numpy array serialization error
+            if "not JSON serializable" in str(e):
+                logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
+                # Convert the data to a JSON-compatible format and retry
+                json_compatible_data = self._make_json_serializable(complete_data)
+                self.wasabi_adapter.store_json(s3_path, json_compatible_data)
+            else:
+                # Re-raise if it's not a serialization error
+                raise
         
         return s3_path
     
@@ -1091,48 +1281,107 @@ Domain Timelines:
             List of floats representing the center embedding or None if embeddings unavailable
         """
         try:
-            # Check if embeddings exist in shade metadata
-            embeddings_exist = all('center_embedding' in (shade.metadata if hasattr(shade, 'metadata') else {}) 
-                                for shade in shades)
-            
-            if not embeddings_exist:
-                logger.warning("Embeddings not found in one or more shades")
+            if not shades:
+                logger.warning("No shades provided for center embedding calculation")
                 return None
                 
-            # Get the first shade's embedding to determine vector dimensions
-            first_embedding = shades[0].metadata.get('center_embedding')
-            if not first_embedding or not isinstance(first_embedding, list):
-                logger.warning(f"Invalid embedding format: {first_embedding}")
+            # Debug info - dump shade metadata structure
+            # logger.info(f"EMBEDDING DEBUG: Analyzing {len(shades)} shades for center embeddings")
+            for i, shade in enumerate(shades):
+                # logger.info(f"EMBEDDING DEBUG: Shade #{i+1} ID: {getattr(shade, 'id', 'unknown')}")
+                
+                # Check if shade has metadata attribute
+                if not hasattr(shade, 'metadata'):
+                    logger.error(f"EMBEDDING DEBUG: Shade #{i+1} has no metadata attribute")
+                    continue
+                    
+                # Log the keys in metadata
+                # logger.info(f"EMBEDDING DEBUG: Shade #{i+1} metadata keys: {list(shade.metadata.keys())}")
+                
+                # Check if center_embedding exists
+                if 'center_embedding' not in shade.metadata:
+                    logger.error(f"EMBEDDING DEBUG: Shade #{i+1} has no center_embedding in metadata")
+                    continue
+                    
+                # Check the format of center_embedding
+                center_embedding = shade.metadata.get('center_embedding')
+                if center_embedding is None:
+                    logger.error(f"EMBEDDING DEBUG: Shade #{i+1} has None as center_embedding")
+                    continue
+                    
+                if not isinstance(center_embedding, (list, np.ndarray)):
+                    logger.error(f"EMBEDDING DEBUG: Shade #{i+1} has center_embedding of type {type(center_embedding)}, expected list or ndarray")
+                    continue
+                    
+                # Note: When debugging on production data, print embedding shape, not the actual values
+                # if isinstance(center_embedding, list):
+                #     logger.info(f"EMBEDDING DEBUG: Shade #{i+1} has list embedding of length {len(center_embedding)}")
+                # else:
+                #     logger.info(f"EMBEDDING DEBUG: Shade #{i+1} has ndarray embedding of shape {center_embedding.shape}")
+                
+            # First check how many shades have embeddings
+            shades_with_embeddings = []
+            for shade in shades:
+                if not hasattr(shade, 'metadata'):
+                    continue
+                    
+                if 'center_embedding' in shade.metadata and shade.metadata['center_embedding'] is not None:
+                    if isinstance(shade.metadata['center_embedding'], (list, np.ndarray)):
+                        shades_with_embeddings.append(shade)
+            
+            # If no shades have embeddings, log a warning and return None
+            if not shades_with_embeddings:
+                logger.error(f"CRITICAL: None of the {len(shades)} shades have center embeddings. This is likely a bug.")
                 return None
+                
+            # If some shades have embeddings but not all, log a warning but continue with what we have
+            if len(shades_with_embeddings) < len(shades):
+                logger.warning(f"Only {len(shades_with_embeddings)} out of {len(shades)} shades have center embeddings")
+            
+            # Get the first valid embedding to determine vector dimensions
+            first_embedding = shades_with_embeddings[0].metadata.get('center_embedding')
+            embedding_dim = len(first_embedding)
+            logger.info(f"Using embedding dimension: {embedding_dim}")
                 
             # Initialize total embedding and cluster size
-            total_embedding = np.zeros(len(first_embedding))
+            total_embedding = np.zeros(embedding_dim)
             total_cluster_size = 0
             
             # Sum weighted embeddings
-            for shade in shades:
+            for shade in shades_with_embeddings:
                 # Get cluster size (default to 1 if not specified)
                 cluster_size = shade.metadata.get('cluster_size', 1)
                 
                 # Get center embedding
                 center_embedding = shade.metadata.get('center_embedding')
-                if not center_embedding or not isinstance(center_embedding, list):
-                    continue
                     
-                # Add weighted embedding to total
                 try:
-                    embedding_array = np.array(center_embedding)
+                    # Convert embedding to numpy array if it's not already
+                    if isinstance(center_embedding, list):
+                        embedding_array = np.array(center_embedding)
+                    else:
+                        embedding_array = center_embedding
+                        
+                    # Check dimensions match
+                    if embedding_array.shape[0] != embedding_dim:
+                        logger.warning(f"Embedding dimension mismatch: expected {embedding_dim}, got {embedding_array.shape[0]}")
+                        continue
+                        
+                    # Add weighted embedding to total
                     total_embedding += cluster_size * embedding_array
                     total_cluster_size += cluster_size
+                    # logger.info(f"EMBEDDING DEBUG: Added embedding from shade {shade.id} with weight {cluster_size}")
                 except Exception as e:
-                    logger.error(f"Error processing embedding: {str(e)}")
+                    logger.error(f"Error processing embedding for shade {shade.id}: {str(e)}")
                     continue
             
             # Return the average embedding
             if total_cluster_size > 0:
-                return (total_embedding / total_cluster_size).tolist()
+                result = (total_embedding / total_cluster_size).tolist()
+                logger.info(f"EMBEDDING DEBUG: Successfully calculated merged center embedding of dimension {len(result)}")
+                return result
             else:
-                logger.warning("Total cluster size is zero")
+                logger.warning("Total cluster size is zero, could not calculate merged embedding")
                 return None
                 
         except Exception as e:
@@ -1149,6 +1398,11 @@ Domain Timelines:
         Returns:
             Formatted shade text
         """
+        # Guard against None values
+        if shade is None:
+            logger.error("Attempted to format a None shade")
+            return "No shade data available"
+            
         # Format timelines
         timelines_text = ""
         if hasattr(shade, "timelines") and shade.timelines:
@@ -1162,15 +1416,22 @@ Domain Timelines:
                 timelines_text += f"- {create_time}, {description}, {ref_id}\n"
         
         # Format the shade in the exact structure expected by LPM Kernel
+        # Get safe values for all fields, defaulting to empty strings if attributes don't exist
+        name = getattr(shade, "name", "Unknown Shade")
+        aspect = getattr(shade, "aspect", "")
+        icon = getattr(shade, "icon", "")
+        desc = getattr(shade, "desc_third_view", getattr(shade, "summary", ""))
+        content = getattr(shade, "content_third_view", getattr(shade, "summary", ""))
+        
         formatted_text = f"""---
-**[Name]**: {shade.name}
-**[Aspect]**: {shade.aspect}
-**[Icon]**: {shade.icon}
+**[Name]**: {name}
+**[Aspect]**: {aspect}
+**[Icon]**: {icon}
 **[Description]**: 
-{shade.desc_third_view or shade.summary}
+{desc}
 
 **[Content]**: 
-{shade.content_third_view or shade.summary}
+{content}
 ---
 
 **[Timelines]**:
@@ -1240,7 +1501,7 @@ Domain Timelines:
                 "confidence": shade_data.get("confidence", 0.0),
                 "timelines": shade_data.get("timelines", [])
             },
-            "new_notes": [note.to_dict() for note in notes],
+            "new_notes": self._prepare_notes_for_json(notes),
             "updated_at": datetime.now().isoformat()
         }
         
@@ -1249,6 +1510,17 @@ Domain Timelines:
         s3_path = f"l1/improved_shades/{user_id}/{shade_id}.json"
         
         # Store in Wasabi
-        self.wasabi_adapter.store_json(s3_path, complete_data)
+        try:
+            self.wasabi_adapter.store_json(s3_path, complete_data)
+        except TypeError as e:
+            # Handle numpy array serialization error
+            if "not JSON serializable" in str(e):
+                logger.warning(f"JSON serialization issue detected: {str(e)}, attempting conversion")
+                # Convert the data to a JSON-compatible format and retry
+                json_compatible_data = self._make_json_serializable(complete_data)
+                self.wasabi_adapter.store_json(s3_path, json_compatible_data)
+            else:
+                # Re-raise if it's not a serialization error
+                raise
         
         return s3_path 

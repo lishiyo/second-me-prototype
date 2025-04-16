@@ -822,6 +822,9 @@ def run_generate_shades():
             logger.warning("No notes or memory items found. Cannot continue the test.")
             return False
         
+        # Add informational message about embeddings
+        logger.info("Note: During testing, some shades may not have embeddings, which will generate warnings.")
+        
         #--------------------------------------------------------------------------
         # 4. Generate topics/clusters for shades
         #--------------------------------------------------------------------------
@@ -896,6 +899,10 @@ def run_generate_shades():
             logger.info(f"  Name: {sample_shade.name}")
             logger.info(f"  Summary: {sample_shade.summary[:100]}...")
             logger.info(f"  Confidence: {sample_shade.confidence}")
+            logger.info(f"  Aspect: {sample_shade.aspect}")
+            logger.info(f"  Icon: {sample_shade.icon}")
+            logger.info(f"  Third person description: {sample_shade.descThirdView[:100] if hasattr(sample_shade, 'descThirdView') else 'N/A'}...")
+            logger.info(f"  Second person description: {sample_shade.descSecondView[:100] if hasattr(sample_shade, 'descSecondView') else 'N/A'}...")
             
             # Check if metadata has timelines
             if hasattr(sample_shade, 'metadata') and 'timelines' in sample_shade.metadata:
@@ -929,6 +936,10 @@ def run_generate_shades():
                 logger.info("\nImprovement comparison:")
                 logger.info(f"  Original name: {test_shade.name} → Improved name: {improved_shade.name}")
                 logger.info(f"  Original confidence: {test_shade.confidence} → Improved confidence: {improved_shade.confidence}")
+                
+                # Compare descriptions
+                logger.info(f"  Original third-person desc: {test_shade.descThirdView[:50] if hasattr(test_shade, 'descThirdView') else 'N/A'}...")
+                logger.info(f"  Improved third-person desc: {improved_shade.descThirdView[:50] if hasattr(improved_shade, 'descThirdView') else 'N/A'}...")
                 
                 # Compare timelines
                 original_timeline_count = 0
@@ -976,6 +987,10 @@ def run_generate_shades():
                 logger.info(f"  Name: {merged_improved_shade.name}")
                 logger.info(f"  Summary: {merged_improved_shade.summary[:100]}...")
                 logger.info(f"  Confidence: {merged_improved_shade.confidence}")
+                logger.info(f"  Aspect: {merged_improved_shade.aspect}")
+                logger.info(f"  Icon: {merged_improved_shade.icon}")
+                logger.info(f"  Third person description: {merged_improved_shade.descThirdView[:100] if hasattr(merged_improved_shade, 'descThirdView') else 'N/A'}...")
+                logger.info(f"  Second person description: {merged_improved_shade.descSecondView[:100] if hasattr(merged_improved_shade, 'descSecondView') else 'N/A'}...")
                 
                 # Check if metadata has timelines
                 if hasattr(merged_improved_shade, 'metadata') and 'timelines' in merged_improved_shade.metadata:

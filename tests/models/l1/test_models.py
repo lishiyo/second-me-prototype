@@ -210,6 +210,10 @@ class TestL1Models(unittest.TestCase):
             icon="🌱",
             descThirdView="This person is characterized by...",
             contentThirdView="Detailed information about the shade...",
+            descSecondView="You are characterized by...",
+            contentSecondView="Detailed information about you...",
+            cluster_info={"cluster_id": "cluster123", "notes": ["note1", "note2"]},
+            metadata={"source": "test", "confidence": 0.9},
             timelines=[
                 ShadeTimeline(
                     refMemoryId="memory1",
@@ -230,6 +234,10 @@ class TestL1Models(unittest.TestCase):
         assert shade_merge_info_dict["icon"] == "🌱"
         assert shade_merge_info_dict["descThirdView"] == "This person is characterized by..."
         assert shade_merge_info_dict["contentThirdView"] == "Detailed information about the shade..."
+        assert shade_merge_info_dict["descSecondView"] == "You are characterized by..."
+        assert shade_merge_info_dict["contentSecondView"] == "Detailed information about you..."
+        assert shade_merge_info_dict["cluster_info"]["cluster_id"] == "cluster123"
+        assert shade_merge_info_dict["metadata"]["source"] == "test"
         assert len(shade_merge_info_dict["timelines"]) == 1
         assert shade_merge_info_dict["timelines"][0]["refMemoryId"] == "memory1"
 
@@ -243,8 +251,44 @@ class TestL1Models(unittest.TestCase):
         assert shade_merge_info_2.icon == "🌱"
         assert shade_merge_info_2.descThirdView == "This person is characterized by..."
         assert shade_merge_info_2.contentThirdView == "Detailed information about the shade..."
+        assert shade_merge_info_2.descSecondView == "You are characterized by..."
+        assert shade_merge_info_2.contentSecondView == "Detailed information about you..."
+        assert shade_merge_info_2.cluster_info["cluster_id"] == "cluster123"
+        assert shade_merge_info_2.metadata["source"] == "test"
         assert len(shade_merge_info_2.timelines) == 1
         assert shade_merge_info_2.timelines[0].refMemoryId == "memory1"
+        
+        # Test to_json method
+        json_dict = shade_merge_info.to_json()
+        assert json_dict["id"] == "shade_id_1"
+        assert json_dict["name"] == "Shade Name"
+        assert json_dict["aspect"] == "Personal Growth"
+        assert json_dict["icon"] == "🌱"
+        assert json_dict["descThirdView"] == "This person is characterized by..."
+        assert json_dict["contentThirdView"] == "Detailed information about the shade..."
+        assert json_dict["descSecondView"] == "You are characterized by..."
+        assert json_dict["contentSecondView"] == "Detailed information about you..."
+        assert "timelines" in json_dict
+        assert len(json_dict["timelines"]) == 1
+        
+        # Test helper methods
+        shade_merge_info.improve_shade_info("Improved description", "Improved content")
+        assert shade_merge_info.descThirdView == "Improved description"
+        assert shade_merge_info.contentThirdView == "Improved content"
+        
+        shade_merge_info.add_second_view("New second view desc", "New second view content")
+        assert shade_merge_info.descSecondView == "New second view desc"
+        assert shade_merge_info.contentSecondView == "New second view content"
+        
+        # Test to_str method
+        str_output = shade_merge_info.to_str()
+        assert "**[Name]**: Shade Name" in str_output
+        assert "**[Aspect]**: Personal Growth" in str_output
+        assert "**[Icon]**: 🌱" in str_output
+        assert "**[Description]**: \nImproved description" in str_output
+        assert "**[Content]**: \nImproved content" in str_output
+        assert "**[Cluster Info]**:" in str_output
+        assert "memory1" in str_output
     
     def test_merged_shade_result(self):
         """Test MergedShadeResult model."""
