@@ -82,7 +82,7 @@ class L1Manager:
         # Set up logger
         self.logger = logging.getLogger(__name__)
     
-    def generate_l1_from_l0(self, user_id: str) -> L1GenerationResult:
+    def generate_l1_from_l0(self, user_id: str, should_store: bool = True) -> L1GenerationResult:
         """
         Generate L1 level knowledge representation from L0 data.
         
@@ -172,13 +172,14 @@ class L1Manager:
             self.logger.info(f"Generated global biography successfully")
             
             # 3. Store L1 data in Wasabi and PostgreSQL
-            self._store_l1_data(
-                user_id=user_id,
-                bio=bio,
-                clusters=clusters,
-                chunk_topics=chunk_topics,
-                shades=merged_shades_result.merge_shade_list if merged_shades_result.success else []
-            )
+            if should_store:
+                self._store_l1_data(
+                   user_id=user_id,
+                   bio=bio,
+                   clusters=clusters,
+                   chunk_topics=chunk_topics,
+                   shades=merged_shades_result.merge_shade_list if merged_shades_result.success else []
+                )
             
             # 4. Build result object
             result = L1GenerationResult(
@@ -347,13 +348,18 @@ class L1Manager:
                     ]
                     
                     # Store in Weaviate (vector DB)
-                    # TODO: this is still missing from weaviate_adapter
-                    self.weaviate_adapter.store_cluster(
-                        user_id=user_id,
-                        cluster_id=cluster_id,
+                    from app.models.l1.topic import Cluster
+                    cluster_model = Cluster(
+                        id=cluster_id,
                         name=cluster_name,
                         center_embedding=center_embedding,
-                        version=new_version
+                        user_id=user_id, # Add user_id
+                        document_ids=document_ids # Add document_ids
+                    )
+
+                    self.weaviate_adapter.add_cluster(
+                        user_id=user_id,
+                        cluster=cluster_model
                     )
                     
                     # Store in PostgreSQL (metadata DB)

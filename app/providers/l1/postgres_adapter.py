@@ -961,6 +961,7 @@ class PostgresAdapter:
                 existing_cluster.name = name
                 existing_cluster.document_count = len(document_ids)
                 existing_cluster.updated_at = datetime.utcnow()
+                existing_cluster.version = version  # Update version
                 
                 # Delete existing document associations to recreate them
                 session.query(L1ClusterDocument).filter(
@@ -976,7 +977,8 @@ class PostgresAdapter:
                     document_count=len(document_ids),
                     s3_path=s3_path,
                     created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
+                    updated_at=datetime.utcnow(),
+                    version=version  # Set version
                 )
                 session.add(cluster)
             
@@ -1029,6 +1031,7 @@ class PostgresAdapter:
                     existing_topic.name = topic_name
                     existing_topic.summary = summary
                     existing_topic.updated_at = datetime.utcnow()
+                    existing_topic.version = version  # Update version
                 else:
                     # Create a new topic record
                     s3_path = f"l1/chunk_topics/{user_id}/{topic_id}.json"
@@ -1039,7 +1042,8 @@ class PostgresAdapter:
                         summary=summary,
                         s3_path=s3_path,
                         created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
+                        updated_at=datetime.utcnow(),
+                        version=version  # Set version
                     )
                     session.add(topic)
             
@@ -1082,6 +1086,7 @@ class PostgresAdapter:
                 existing_shade.summary = summary
                 existing_shade.confidence = confidence
                 existing_shade.updated_at = datetime.utcnow()
+                existing_shade.version = version  # Update version
                 
                 # Delete existing cluster associations to recreate them
                 session.query(L1ShadeCluster).filter(
@@ -1098,7 +1103,8 @@ class PostgresAdapter:
                     confidence=confidence,
                     s3_path=s3_path,
                     created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
+                    updated_at=datetime.utcnow(),
+                    version=version  # Set version
                 )
                 session.add(shade)
             

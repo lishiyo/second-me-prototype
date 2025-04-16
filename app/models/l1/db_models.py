@@ -24,9 +24,11 @@ class L1Topic(Base):
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), 
                       onupdate=lambda: datetime.now(timezone.utc))
     s3_path = Column(Text, nullable=False)  # Path to detailed data in Wasabi
+    version = Column(Integer, ForeignKey("l1_versions.version"), nullable=True)  # Link to L1Version
     
     # Relationships
     clusters = relationship("L1Cluster", back_populates="topic", cascade="all, delete-orphan")
+    version_info = relationship("L1Version", back_populates="topics")
 
     def to_dict(self):
         """Convert to dictionary."""
@@ -37,7 +39,8 @@ class L1Topic(Base):
             "summary": self.summary,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "s3_path": self.s3_path
+            "s3_path": self.s3_path,
+            "version": self.version
         }
 
 
@@ -55,11 +58,13 @@ class L1Cluster(Base):
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), 
                       onupdate=lambda: datetime.now(timezone.utc))
     s3_path = Column(Text, nullable=False)  # Path to detailed data in Wasabi
+    version = Column(Integer, ForeignKey("l1_versions.version"), nullable=True)  # Link to L1Version
     
     # Relationships
     topic = relationship("L1Topic", back_populates="clusters")
     cluster_documents = relationship("L1ClusterDocument", back_populates="cluster", cascade="all, delete-orphan")
     shade_clusters = relationship("L1ShadeCluster", back_populates="cluster", cascade="all, delete-orphan")
+    version_info = relationship("L1Version", back_populates="clusters")
 
     def to_dict(self):
         """Convert to dictionary."""
@@ -72,7 +77,8 @@ class L1Cluster(Base):
             "document_count": self.document_count,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "s3_path": self.s3_path
+            "s3_path": self.s3_path,
+            "version": self.version
         }
 
 
@@ -110,6 +116,7 @@ class L1Shade(Base):
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), 
                       onupdate=lambda: datetime.now(timezone.utc))
     s3_path = Column(Text, nullable=False)  # Path to detailed data in Wasabi
+    version = Column(Integer, ForeignKey("l1_versions.version"), nullable=True)  # Link to L1Version
     
     # New fields to match L1Shade model
     aspect = Column(Text, nullable=True)
@@ -121,6 +128,7 @@ class L1Shade(Base):
     
     # Relationships
     shade_clusters = relationship("L1ShadeCluster", back_populates="shade", cascade="all, delete-orphan")
+    version_info = relationship("L1Version", back_populates="shades")
 
     def to_dict(self):
         """Convert to dictionary."""
@@ -133,6 +141,7 @@ class L1Shade(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "s3_path": self.s3_path,
+            "version": self.version,
             "aspect": self.aspect,
             "icon": self.icon,
             "desc_second_view": self.desc_second_view,
@@ -229,6 +238,12 @@ class L1Version(Base):
     started_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
     error = Column(Text, nullable=True)
+    
+    # Relationships to other L1 entities
+    global_biographies = relationship("L1GlobalBiography", backref="version_info")
+    clusters = relationship("L1Cluster", back_populates="version_info")
+    shades = relationship("L1Shade", back_populates="version_info")
+    topics = relationship("L1Topic", back_populates="version_info")
     
     def to_dict(self):
         """Convert to dictionary."""
