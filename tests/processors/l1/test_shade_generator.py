@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
 
 from app.processors.l1.shade_generator import ShadeGenerator
-from app.models.l1.shade import Shade as L1Shade
+from app.models.l1.shade import L1Shade
 
 # Mock Note class for testing
 @dataclass

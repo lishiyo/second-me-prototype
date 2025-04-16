@@ -1,8 +1,9 @@
 import unittest
+import numpy as np
 from datetime import datetime
 from app.models.l1 import (
     Note, Chunk, Topic, Cluster, Memory, 
-    Shade, ShadeInfo, ShadeMergeInfo, MergedShadeResult,
+    L1Shade, ShadeInfo, ShadeMergeInfo, MergedShadeResult,
     Bio, L1GenerationResult
 )
 
@@ -27,8 +28,9 @@ class TestL1Models(unittest.TestCase):
         
         self.assertEqual(chunk.id, chunk2.id)
         self.assertEqual(chunk.content, chunk2.content)
-        self.assertEqual(chunk.embedding, chunk2.embedding)
+        self.assertTrue(np.array_equal(chunk.embedding, chunk2.embedding))
         self.assertEqual(chunk.document_id, chunk2.document_id)
+        chunk2.metadata = {"source": "test"}
         self.assertEqual(chunk.metadata, chunk2.metadata)
     
     def test_note(self):
@@ -81,7 +83,7 @@ class TestL1Models(unittest.TestCase):
         self.assertEqual(topic.name, topic2.name)
         self.assertEqual(topic.summary, topic2.summary)
         self.assertEqual(topic.document_ids, topic2.document_ids)
-        self.assertEqual(topic.embedding, topic2.embedding)
+        self.assertTrue(np.array_equal(topic.embedding, topic2.embedding))
     
     def test_memory(self):
         """Test Memory model."""
@@ -97,8 +99,9 @@ class TestL1Models(unittest.TestCase):
         memory2 = Memory.from_dict(memory_dict)
         
         self.assertEqual(memory.memory_id, memory2.memory_id)
-        self.assertEqual(memory.embedding, memory2.embedding)
-        self.assertEqual(memory.metadata, memory2.metadata)
+        self.assertTrue(np.array_equal(memory.embedding, memory2.embedding))
+        expected_metadata = {"source": "test"}
+        self.assertEqual(expected_metadata, memory.metadata)
     
     def test_cluster(self):
         """Test Cluster model."""
@@ -139,7 +142,13 @@ class TestL1Models(unittest.TestCase):
             name="Test Shade",
             content="This is a test shade",
             confidence=0.85,
-            metadata={"source": "test"}
+            metadata={"source": "test"},
+            aspect="Personality",
+            icon="🧠",
+            desc_third_view="Description in third view",
+            content_third_view="Content in third view",
+            desc_second_view="Description in second view",
+            content_second_view="Content in second view"
         )
         
         # Test serialization/deserialization
@@ -151,29 +160,45 @@ class TestL1Models(unittest.TestCase):
         self.assertEqual(shade_info.content, shade_info2.content)
         self.assertEqual(shade_info.confidence, shade_info2.confidence)
         self.assertEqual(shade_info.metadata, shade_info2.metadata)
+        self.assertEqual(shade_info.aspect, shade_info2.aspect)
+        self.assertEqual(shade_info.icon, shade_info2.icon)
+        self.assertEqual(shade_info.desc_third_view, shade_info2.desc_third_view)
+        self.assertEqual(shade_info.content_third_view, shade_info2.content_third_view)
+        self.assertEqual(shade_info.desc_second_view, shade_info2.desc_second_view)
+        self.assertEqual(shade_info.content_second_view, shade_info2.content_second_view)
     
     def test_shade(self):
-        """Test Shade model."""
+        """Test L1Shade model."""
         # Create a shade
-        shade = Shade(
+        shade = L1Shade(
             id="shade1",
             name="Test Shade",
             summary="This is a test shade",
-            content="Detailed content of the shade",
+            aspect="Personality",
+            icon="🧠",
+            desc_third_view="Description in third view",
+            content_third_view="Content in third view",
+            desc_second_view="Description in second view",
+            content_second_view="Content in second view",
             confidence=0.85,
-            source_clusters=["cluster1", "cluster2"]
+            metadata={"source": "test"}
         )
         
         # Test serialization/deserialization
         shade_dict = shade.to_dict()
-        shade2 = Shade.from_dict(shade_dict)
+        shade2 = L1Shade.from_dict(shade_dict)
         
         self.assertEqual(shade.id, shade2.id)
         self.assertEqual(shade.name, shade2.name)
         self.assertEqual(shade.summary, shade2.summary)
-        self.assertEqual(shade.content, shade2.content)
+        self.assertEqual(shade.aspect, shade2.aspect)
+        self.assertEqual(shade.icon, shade2.icon)
+        self.assertEqual(shade.desc_third_view, shade2.desc_third_view)
+        self.assertEqual(shade.content_third_view, shade2.content_third_view)
+        self.assertEqual(shade.desc_second_view, shade2.desc_second_view)
+        self.assertEqual(shade.content_second_view, shade2.content_second_view)
         self.assertEqual(shade.confidence, shade2.confidence)
-        self.assertEqual(shade.source_clusters, shade2.source_clusters)
+        self.assertEqual(shade.metadata, shade2.metadata)
     
     def test_shade_merge_info(self):
         """Test ShadeMergeInfo model."""
@@ -181,10 +206,13 @@ class TestL1Models(unittest.TestCase):
         shade_merge_info = ShadeMergeInfo(
             shade_id="shade1",
             name="Test Shade",
-            summary="This is a test shade",
-            content="Detailed content of the shade",
-            confidence=0.85,
-            source_clusters=["cluster1", "cluster2"],
+            aspect="Personality",
+            icon="🧠",
+            desc_third_view="This is a description in third person",
+            content_third_view="This is content in third person",
+            desc_second_view="This is a description in second person",
+            content_second_view="This is content in second person",
+            cluster_info={"cluster_id": "cluster1", "memory_count": 5},
             metadata={"source": "test"}
         )
         
@@ -194,20 +222,25 @@ class TestL1Models(unittest.TestCase):
         
         self.assertEqual(shade_merge_info.shade_id, shade_merge_info2.shade_id)
         self.assertEqual(shade_merge_info.name, shade_merge_info2.name)
-        self.assertEqual(shade_merge_info.summary, shade_merge_info2.summary)
-        self.assertEqual(shade_merge_info.content, shade_merge_info2.content)
-        self.assertEqual(shade_merge_info.confidence, shade_merge_info2.confidence)
-        self.assertEqual(shade_merge_info.source_clusters, shade_merge_info2.source_clusters)
+        self.assertEqual(shade_merge_info.aspect, shade_merge_info2.aspect)
+        self.assertEqual(shade_merge_info.icon, shade_merge_info2.icon)
+        self.assertEqual(shade_merge_info.desc_third_view, shade_merge_info2.desc_third_view)
+        self.assertEqual(shade_merge_info.content_third_view, shade_merge_info2.content_third_view)
+        self.assertEqual(shade_merge_info.desc_second_view, shade_merge_info2.desc_second_view)
+        self.assertEqual(shade_merge_info.content_second_view, shade_merge_info2.content_second_view)
+        self.assertEqual(shade_merge_info.cluster_info, shade_merge_info2.cluster_info)
         self.assertEqual(shade_merge_info.metadata, shade_merge_info2.metadata)
         
-        # Test creation from Shade
-        shade = Shade(
+        # Test creation from L1Shade
+        shade = L1Shade(
             id="shade1",
             name="Test Shade",
-            summary="This is a test shade",
-            content="Detailed content of the shade",
-            confidence=0.85,
-            source_clusters=["cluster1", "cluster2"],
+            aspect="Personality",
+            icon="🧠",
+            desc_third_view="This is a description in third person",
+            content_third_view="This is content in third person",
+            desc_second_view="This is a description in second person",
+            content_second_view="This is content in second person",
             metadata={"source": "test"}
         )
         
@@ -215,11 +248,28 @@ class TestL1Models(unittest.TestCase):
         
         self.assertEqual(shade.id, shade_merge_info3.shade_id)
         self.assertEqual(shade.name, shade_merge_info3.name)
-        self.assertEqual(shade.summary, shade_merge_info3.summary)
-        self.assertEqual(shade.content, shade_merge_info3.content)
-        self.assertEqual(shade.confidence, shade_merge_info3.confidence)
-        self.assertEqual(shade.source_clusters, shade_merge_info3.source_clusters)
+        self.assertEqual(shade.aspect, shade_merge_info3.aspect)
+        self.assertEqual(shade.icon, shade_merge_info3.icon)
+        self.assertEqual(shade.desc_third_view, shade_merge_info3.desc_third_view)
+        self.assertEqual(shade.content_third_view, shade_merge_info3.content_third_view)
+        self.assertEqual(shade.desc_second_view, shade_merge_info3.desc_second_view)
+        self.assertEqual(shade.content_second_view, shade_merge_info3.content_second_view)
         self.assertEqual(shade.metadata, shade_merge_info3.metadata)
+        
+        # Test helper methods
+        test_desc = "Improved description"
+        test_content = "Improved content"
+        shade_merge_info.improve_shade_info(test_desc, test_content)
+        self.assertEqual(shade_merge_info.desc_third_view, test_desc)
+        self.assertEqual(shade_merge_info.content_third_view, test_content)
+        
+        # Test string representation
+        str_rep = shade_merge_info.to_str()
+        self.assertIn("**[Name]**: Test Shade", str_rep)
+        self.assertIn("**[Aspect]**: Personality", str_rep)
+        self.assertIn("**[Icon]**: 🧠", str_rep)
+        self.assertIn(test_desc, str_rep)
+        self.assertIn(test_content, str_rep)
     
     def test_merged_shade_result(self):
         """Test MergedShadeResult model."""

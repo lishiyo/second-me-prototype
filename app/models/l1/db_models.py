@@ -111,6 +111,14 @@ class L1Shade(Base):
                       onupdate=lambda: datetime.now(timezone.utc))
     s3_path = Column(Text, nullable=False)  # Path to detailed data in Wasabi
     
+    # New fields to match L1Shade model
+    aspect = Column(Text, nullable=True)
+    icon = Column(Text, nullable=True)
+    desc_second_view = Column(Text, nullable=True)
+    desc_third_view = Column(Text, nullable=True)
+    content_second_view = Column(Text, nullable=True)
+    content_third_view = Column(Text, nullable=True)
+    
     # Relationships
     shade_clusters = relationship("L1ShadeCluster", back_populates="shade", cascade="all, delete-orphan")
 
@@ -124,7 +132,13 @@ class L1Shade(Base):
             "confidence": self.confidence,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "s3_path": self.s3_path
+            "s3_path": self.s3_path,
+            "aspect": self.aspect,
+            "icon": self.icon,
+            "desc_second_view": self.desc_second_view,
+            "desc_third_view": self.desc_third_view,
+            "content_second_view": self.content_second_view,
+            "content_third_view": self.content_third_view
         }
 
 

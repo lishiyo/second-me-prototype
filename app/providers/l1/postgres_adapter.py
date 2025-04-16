@@ -17,7 +17,7 @@ from app.models.l1.db_models import (
     L1Version
 )
 from app.models.l1.topic import Topic, Cluster
-from app.models.l1.shade import Shade
+from app.models.l1.shade import L1Shade as ShadeModel
 from app.models.l1.bio import Bio
 
 logger = logging.getLogger(__name__)
@@ -655,32 +655,44 @@ class PostgresAdapter:
         
         return db_cluster
     
-    def create_shade_from_model(self, user_id: str, shade: Shade) -> Optional[L1Shade]:
+    def create_shade_from_model(self, user_id: str, shade: ShadeModel) -> Optional[L1Shade]:
         """
-        Create a new shade from a Shade domain model.
+        Create a L1Shade database record from a domain model.
         
         Args:
             user_id: The user ID.
-            shade: Shade domain model.
+            shade: ShadeModel domain model.
             
         Returns:
-            The created L1Shade object or None if creation failed.
+            The created L1Shade database object or None if creation failed.
         """
-        s3_path = f"l1/shades/{user_id}/{shade.id}.json"
-        db_shade = self.create_shade(
-            user_id=user_id,
-            name=shade.name,
-            summary=shade.summary or "",
-            confidence=shade.confidence,
-            s3_path=s3_path
-        )
-        
-        # Add clusters to shade
-        if db_shade and shade.source_clusters:
-            for cluster_id in shade.source_clusters:
-                self.add_cluster_to_shade(db_shade.id, cluster_id)
-        
-        return db_shade
+        session = self.get_db_session()
+        try:
+            db_shade = L1Shade(
+                id=shade.id,
+                user_id=user_id,
+                name=shade.name,
+                summary=shade.summary,
+                confidence=shade.confidence,
+                s3_path=shade.s3_path or "",
+                created_at=datetime.fromisoformat(shade.created_at) if isinstance(shade.created_at, str) else shade.created_at,
+                updated_at=datetime.fromisoformat(shade.updated_at) if isinstance(shade.updated_at, str) else shade.updated_at,
+                aspect=shade.aspect,
+                icon=shade.icon,
+                desc_second_view=shade.desc_second_view,
+                desc_third_view=shade.desc_third_view,
+                content_second_view=shade.content_second_view,
+                content_third_view=shade.content_third_view
+            )
+            session.add(db_shade)
+            session.commit()
+            return db_shade
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error creating shade from model: {e}")
+            return None
+        finally:
+            self.close_db_session(session)
     
     def create_global_biography_from_model(self, user_id: str, bio: Bio, version: int) -> Optional[L1GlobalBiography]:
         """
@@ -744,29 +756,31 @@ class PostgresAdapter:
             s3_path=db_topic.s3_path
         )
     
-    def convert_to_shade_model(self, db_shade: L1Shade) -> Shade:
+    def convert_to_shade_model(self, db_shade: L1Shade) -> ShadeModel:
         """
-        Convert an L1Shade database model to a Shade domain model.
+        Convert a database shade to a domain model.
         
         Args:
-            db_shade: L1Shade database model.
+            db_shade: L1Shade database object.
             
         Returns:
-            Shade domain model.
+            ShadeModel domain model.
         """
-        # Get clusters associated with this shade
-        cluster_ids = self.get_shade_clusters(db_shade.id)
-        
-        return Shade(
+        return ShadeModel(
             id=db_shade.id,
+            user_id=db_shade.user_id,
             name=db_shade.name,
             summary=db_shade.summary,
             confidence=db_shade.confidence,
-            source_clusters=cluster_ids,
-            created_at=db_shade.created_at,
-            updated_at=db_shade.updated_at,
-            metadata={},
-            s3_path=db_shade.s3_path
+            created_at=db_shade.created_at.isoformat() if db_shade.created_at else None,
+            updated_at=db_shade.updated_at.isoformat() if db_shade.updated_at else None,
+            s3_path=db_shade.s3_path,
+            aspect=db_shade.aspect,
+            icon=db_shade.icon,
+            desc_second_view=db_shade.desc_second_view,
+            desc_third_view=db_shade.desc_third_view,
+            content_second_view=db_shade.content_second_view,
+            content_third_view=db_shade.content_third_view
         )
     
     def convert_to_cluster_model(self, db_cluster: L1Cluster) -> Cluster:
@@ -829,15 +843,15 @@ class PostgresAdapter:
             return self.convert_to_topic_model(db_topic)
         return None
     
-    def get_shade_model(self, shade_id: str) -> Optional[Shade]:
+    def get_shade_model(self, shade_id: str) -> Optional[ShadeModel]:
         """
-        Get a Shade domain model by ID.
+        Get a shade domain model by ID.
         
         Args:
             shade_id: The shade ID.
             
         Returns:
-            Shade domain model or None if not found.
+            ShadeModel domain model or None if not found.
         """
         db_shade = self.get_shade(shade_id)
         if db_shade:

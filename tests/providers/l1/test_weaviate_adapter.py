@@ -5,9 +5,9 @@ from uuid import uuid4
 
 from app.providers.l1.weaviate_adapter import WeaviateAdapter, InvalidModelError
 from app.models.l1.topic import Topic, Cluster
-from app.models.l1.shade import Shade
+from app.models.l1.shade import L1Shade
 from app.models.l1.bio import Bio
-
+from app.providers.l1.weaviate_adapter import BIOS_COLLECTION, TOPICS_COLLECTION, CLUSTERS_COLLECTION, SHADES_COLLECTION
 
 @pytest.fixture
 def mock_weaviate_client():
@@ -51,7 +51,7 @@ def test_add_topic(weaviate_adapter, mock_weaviate_client):
     assert properties["summary"] == mock_topic.summary
     
     # Check that the class name is correct
-    assert call_args[1] == "L1Topics"
+    assert call_args[1] == TOPICS_COLLECTION
     
     # Check UUID
     assert result_uuid is not None
@@ -80,14 +80,14 @@ def test_add_cluster(weaviate_adapter, mock_weaviate_client):
     assert properties["name"] == mock_cluster.name
     assert properties["summary"] == mock_cluster.summary
     
-    assert call_args[1] == "L1Clusters"
+    assert call_args[1] == CLUSTERS_COLLECTION
     assert result_uuid is not None
 
 
 def test_add_shade(weaviate_adapter, mock_weaviate_client):
     """Test adding a Shade to Weaviate"""
     user_id = "user_123"
-    mock_shade = MagicMock(spec=Shade)
+    mock_shade = MagicMock(spec=L1Shade)
     mock_shade.id = "shade_789"
     mock_shade.name = "Test Shade"
     mock_shade.summary = "Shade summary"
@@ -107,7 +107,7 @@ def test_add_shade(weaviate_adapter, mock_weaviate_client):
     assert properties["summary"] == mock_shade.summary
     assert properties["confidence"] == mock_shade.confidence
     
-    assert call_args[1] == "L1Shades"
+    assert call_args[1] == SHADES_COLLECTION
     assert result_uuid is not None
 
 
@@ -133,7 +133,7 @@ def test_add_biography(weaviate_adapter, mock_weaviate_client):
     assert properties["user_id"] == user_id
     assert "content" in properties
     
-    assert call_args[1] == "L1Biographies"
+    assert call_args[1] == BIOS_COLLECTION
     assert result_uuid is not None
 
 

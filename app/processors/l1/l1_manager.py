@@ -139,9 +139,9 @@ class L1Manager:
                         self.logger.info(f"Generating shade for cluster with {len(cluster_notes)} notes")
                         shade = self.shade_generator.generate_shade(
                             user_id=user_id,
-                            old_shades=[],
-                            notes=cluster_notes,
-                            todos=[]  # Empty for now
+                            old_memory_list=[],
+                            new_memory_list=cluster_notes,
+                            shade_info_list=[]
                         )
                         
                         if shade:

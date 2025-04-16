@@ -144,7 +144,7 @@ class LLMService:
             return True
         return False
     
-    def call_with_retry(self, messages: List[Dict[str, str]], **kwargs) -> Any:
+    def call_with_retry(self, messages: List[Dict[str, str]], model_params: Dict[str, Any] = None, **kwargs) -> Any:
         """
         Calls the LLM API with automatic retry for parameter adjustments.
         
@@ -155,6 +155,7 @@ class LLMService:
         
         Args:
             messages: List of messages for the API call.
+            model_params: Custom model parameters to use instead of self.topic_params
             **kwargs: Additional parameters to pass to the API call.
             
         Returns:
@@ -165,11 +166,14 @@ class LLMService:
         """
         model = kwargs.pop('model', self.default_model)
         
+        # Use provided model_params or fall back to self.topic_params
+        params = model_params or self.topic_params
+        
         try:
             return self.client.chat.completions.create(
                 model=model,
                 messages=messages,
-                **self.topic_params,
+                **params,
                 **kwargs
             )
         except Exception as e:
@@ -180,10 +184,13 @@ class LLMService:
             if hasattr(e, 'response') and hasattr(e.response, 'status_code') and e.response.status_code == 400:
                 if self._fix_top_p_param(error_msg):
                     logger.info("Retrying LLM API call with adjusted top_p parameter")
+                    # Use a copy of the params to avoid modifying the original
+                    adjusted_params = params.copy()
+                    adjusted_params["top_p"] = 0.001
                     return self.client.chat.completions.create(
                         model=model,
                         messages=messages,
-                        **self.topic_params,
+                        **adjusted_params,
                         **kwargs
                     )
             

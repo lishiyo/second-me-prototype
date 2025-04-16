@@ -8,7 +8,7 @@ compatible API with lpm_kernel's ShadeMerger class.
 import logging
 from typing import List, Dict, Any, Optional
 
-from app.models.l1.shade import Shade as L1Shade
+from app.models.l1.shade import L1Shade
 from app.processors.l1.shade_generator import ShadeGenerator
 
 logger = logging.getLogger(__name__)

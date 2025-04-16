@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from app.models.l1.bio import Bio
 from app.models.l1.note import Note, Chunk
-from app.models.l1.shade import Shade as L1Shade
+from app.models.l1.shade import L1Shade
 
 
 @pytest.fixture

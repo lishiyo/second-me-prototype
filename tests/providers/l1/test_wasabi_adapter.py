@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 from app.providers.l1.wasabi_adapter import WasabiStorageAdapter, InvalidModelError
 from app.providers.blob_store import BlobStore
 from app.models.l1.topic import Topic, Cluster
-from app.models.l1.shade import Shade
+from app.models.l1.shade import L1Shade
 from app.models.l1.bio import Bio
 
 
@@ -171,7 +171,7 @@ def mock_cluster():
 @pytest.fixture
 def mock_shade():
     """Return a mock Shade object."""
-    shade = MagicMock(spec=Shade)
+    shade = MagicMock(spec=L1Shade)
     shade.id = "shade_1"
     shade.name = "Test Shade"
     shade.summary = "Test summary"

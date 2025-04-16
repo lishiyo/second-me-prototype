@@ -796,6 +796,264 @@ def run_generate_topics():
         if resources:
             cleanup_resources(resources)
 
+def run_generate_shades():
+    """Test the shade generation and merging process in L1Manager"""
+    logger.info("Starting test of shade generation and merging...")
+    
+    start_time = time.time()
+    resources = None
+    
+    try:
+        # Initialize the test environment and get resources
+        resources = initialize_l1_test_environment()
+        
+        if not resources:
+            logger.error("Failed to initialize test environment")
+            return False
+            
+        topics_generator = resources["topics_generator"]
+        shade_generator = resources["shade_generator"]
+        shade_merger = resources["shade_merger"]
+        notes_list = resources["notes_list"]
+        memory_list = resources["memory_list"]
+        user_id = resources["user_id"]
+        
+        if not notes_list or not memory_list:
+            logger.warning("No notes or memory items found. Cannot continue the test.")
+            return False
+        
+        #--------------------------------------------------------------------------
+        # 4. Generate topics/clusters for shades
+        #--------------------------------------------------------------------------
+        logger.info("STEP 4: Generating topics/clusters for shades...")
+        
+        clusters = topics_generator.generate_topics_for_shades(
+            user_id=user_id,
+            old_cluster_list=[], 
+            old_outlier_memory_list=[], 
+            new_memory_list=memory_list
+        )
+        
+        if not clusters or "clusterList" not in clusters or not clusters["clusterList"]:
+            logger.warning("No clusters generated. Cannot continue shade generation test.")
+            return False
+            
+        logger.info(f"Generated {len(clusters['clusterList'])} clusters")
+        
+        #--------------------------------------------------------------------------
+        # 5. Test Path 1: Initial shade generation (no old shades)
+        #--------------------------------------------------------------------------
+        logger.info("\nTEST PATH 1: Initial shade generation (no old shades)...")
+        
+        # Get the first two clusters for our tests
+        test_clusters = clusters.get("clusterList", [])[:2]
+        if len(test_clusters) < 2:
+            logger.warning("Not enough clusters for testing all paths. Proceeding with limited tests.")
+        
+        # Generate initial shades for each test cluster
+        initial_shades = []
+        for i, cluster in enumerate(test_clusters):
+            # Use memoryId for compatibility with lpm_kernel
+            cluster_memory_ids = [
+                str(m.get("memoryId")) for m in cluster.get("memoryList", [])
+            ]
+            logger.info(f"Processing test cluster {i+1} with {len(cluster_memory_ids)} memories")
+            
+            # Find notes with matching IDs, using Note.id or Note.noteId
+            cluster_notes = [
+                note for note in notes_list if str(note.id) in cluster_memory_ids
+            ]
+            
+            # Split notes for improvement testing
+            if len(cluster_notes) > 2:
+                initial_notes = cluster_notes[:-2]  # Use all but 2 notes for initial generation
+                remaining_notes = cluster_notes[-2:]  # Save 2 notes for improvement
+            else:
+                initial_notes = cluster_notes
+                remaining_notes = []
+            
+            if initial_notes:
+                logger.info(f"Generating initial shade with {len(initial_notes)} notes (Path 1)")
+                shade = shade_generator.generate_shade(
+                    user_id=user_id,
+                    old_memory_list=[],
+                    new_memory_list=initial_notes,
+                    shade_info_list=[]
+                )
+                
+                if shade:
+                    initial_shades.append({
+                        "shade": shade,
+                        "remaining_notes": remaining_notes
+                    })
+                    logger.info(f"Generated initial shade: {shade.name if hasattr(shade, 'name') else 'Unknown'}")
+        
+        # Dump sample initial shade for inspection
+        if initial_shades:
+            sample_shade = initial_shades[0]["shade"]
+            logger.info("\nSample initial shade details:")
+            logger.info(f"  ID: {sample_shade.id}")
+            logger.info(f"  Name: {sample_shade.name}")
+            logger.info(f"  Summary: {sample_shade.summary[:100]}...")
+            logger.info(f"  Confidence: {sample_shade.confidence}")
+            
+            # Check if metadata has timelines
+            if hasattr(sample_shade, 'metadata') and 'timelines' in sample_shade.metadata:
+                timelines = sample_shade.metadata['timelines']
+                logger.info(f"  Timeline count: {len(timelines)}")
+                if timelines:
+                    timeline_sample = timelines[0]
+                    logger.info(f"  Sample timeline: {timeline_sample}")
+        
+        #--------------------------------------------------------------------------
+        # 6. Test Path 2: Single shade improvement (1 old shade + new notes)
+        #--------------------------------------------------------------------------
+        if len(initial_shades) > 0 and initial_shades[0]["remaining_notes"]:
+            logger.info("\nTEST PATH 2: Single shade improvement (1 old shade + new notes)...")
+            
+            test_shade = initial_shades[0]["shade"]
+            remaining_notes = initial_shades[0]["remaining_notes"]
+            
+            logger.info(f"Improving shade '{test_shade.name}' with {len(remaining_notes)} additional notes (Path 2)")
+            improved_shade = shade_generator.generate_shade(
+                user_id=user_id,
+                old_memory_list=remaining_notes,
+                new_memory_list=remaining_notes,
+                shade_info_list=[test_shade]
+            )
+            
+            if improved_shade:
+                logger.info(f"Successfully improved shade: {improved_shade.name}")
+                
+                # Compare original and improved
+                logger.info("\nImprovement comparison:")
+                logger.info(f"  Original name: {test_shade.name} → Improved name: {improved_shade.name}")
+                logger.info(f"  Original confidence: {test_shade.confidence} → Improved confidence: {improved_shade.confidence}")
+                
+                # Compare timelines
+                original_timeline_count = 0
+                if hasattr(test_shade, 'metadata') and 'timelines' in test_shade.metadata:
+                    original_timeline_count = len(test_shade.metadata['timelines'])
+                
+                improved_timeline_count = 0
+                if hasattr(improved_shade, 'metadata') and 'timelines' in improved_shade.metadata:
+                    improved_timeline_count = len(improved_shade.metadata['timelines'])
+                
+                logger.info(f"  Original timeline count: {original_timeline_count} → Improved timeline count: {improved_timeline_count}")
+            else:
+                logger.warning("Failed to improve shade")
+        else:
+            logger.info("\nSkipping TEST PATH 2: Not enough data for shade improvement test")
+        
+        #--------------------------------------------------------------------------
+        # 7. Test Path 3: Merging then improving (multiple old shades + new notes)
+        #--------------------------------------------------------------------------
+        if len(initial_shades) > 1:
+            logger.info("\nTEST PATH 3: Merging then improving (multiple old shades + new notes)...")
+            
+            # Get the shades to merge
+            shades_to_merge = [shade_info["shade"] for shade_info in initial_shades[:2]]
+            
+            # Collect remaining notes for improvement after merge
+            notes_for_improvement = []
+            for shade_info in initial_shades[:2]:
+                notes_for_improvement.extend(shade_info["remaining_notes"])
+            
+            logger.info(f"Merging {len(shades_to_merge)} shades and improving with {len(notes_for_improvement)} notes (Path 3)")
+            merged_improved_shade = shade_generator.generate_shade(
+                user_id=user_id,
+                old_memory_list=notes_for_improvement,
+                new_memory_list=notes_for_improvement,
+                shade_info_list=shades_to_merge
+            )
+            
+            if merged_improved_shade:
+                logger.info(f"Successfully merged and improved shades into: {merged_improved_shade.name}")
+                
+                # Log details of merged-improved shade
+                logger.info("\nMerged & improved shade details:")
+                logger.info(f"  ID: {merged_improved_shade.id}")
+                logger.info(f"  Name: {merged_improved_shade.name}")
+                logger.info(f"  Summary: {merged_improved_shade.summary[:100]}...")
+                logger.info(f"  Confidence: {merged_improved_shade.confidence}")
+                
+                # Check if metadata has timelines
+                if hasattr(merged_improved_shade, 'metadata') and 'timelines' in merged_improved_shade.metadata:
+                    timelines = merged_improved_shade.metadata['timelines']
+                    logger.info(f"  Timeline count: {len(timelines)}")
+                    if timelines:
+                        timeline_sample = timelines[0]
+                        logger.info(f"  Sample timeline: {timeline_sample}")
+            else:
+                logger.warning("Failed to merge and improve shades")
+        else:
+            logger.info("\nSkipping TEST PATH 3: Not enough shades for merge+improve test")
+        
+        #--------------------------------------------------------------------------
+        # 8. Standard merging test using shade_merger
+        #--------------------------------------------------------------------------
+        logger.info("\nStandard Merging Test using shade_merger:")
+        
+        if len(initial_shades) > 1:
+            shades_to_merge = [shade_info["shade"] for shade_info in initial_shades]
+            logger.info(f"Merging {len(shades_to_merge)} shades using shade_merger")
+            
+            merged_shades_result = shade_merger.merge_shades(user_id=user_id, shades=shades_to_merge)
+            
+            if hasattr(merged_shades_result, 'success'):
+                logger.info(f"Merged shades success: {merged_shades_result.success}")
+                
+                if merged_shades_result.success:
+                    merged_shades = merged_shades_result.merge_shade_list
+                    logger.info(f"Merged into {len(merged_shades)} shades")
+                    
+                    # Log sample merged shade
+                    if merged_shades:
+                        sample_merged = merged_shades[0]
+                        logger.info("\nSample merged shade details:")
+                        for key, value in sample_merged.items():
+                            if key != 'metadata':
+                                logger.info(f"  {key}: {value}")
+                        
+                        # Log metadata summary if exists
+                        if 'metadata' in sample_merged:
+                            metadata = sample_merged['metadata']
+                            logger.info(f"  Metadata keys: {list(metadata.keys())}")
+                            
+                            if 'timelines' in metadata:
+                                timelines = metadata['timelines']
+                                logger.info(f"  Timeline count: {len(timelines)}")
+                                if timelines:
+                                    timeline_sample = timelines[0]
+                                    logger.info(f"  Sample timeline: {timeline_sample}")
+            else:
+                # Handle case where merged_shades_result is a List directly
+                logger.info(f"Merged into {len(merged_shades_result)} shades")
+                
+                # Log sample merged shade
+                if merged_shades_result:
+                    sample_merged = merged_shades_result[0]
+                    logger.info("\nSample merged shade details:")
+                    for key, value in sample_merged.items():
+                        if key != 'metadata':
+                            logger.info(f"  {key}: {value}")
+        else:
+            logger.info("Not enough shades to test merging")
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"\n✅ Shade generation and merging test completed successfully in {elapsed_time:.2f} seconds")
+        return True
+        
+    except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"❌ Error testing shade generation and merging after {elapsed_time:.2f} seconds: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+    finally:
+        # Clean up resources
+        if resources:
+            cleanup_resources(resources)
+
 def test_generate_l1_from_l0():
     """Test the full generation process with the generate_l1_from_l0 method"""
     logger.info("Starting test of generate_l1_from_l0...")
@@ -815,10 +1073,14 @@ if __name__ == "__main__":
     # topics_test_success = run_topics_for_shades()
     
     # Run the generate_topics test
-    logger.info("\n=== Starting generate_topics test ===")
-    generate_topics_success = run_generate_topics()
+    # logger.info("\n=== Starting generate_topics test ===")
+    # generate_topics_success = run_generate_topics()
 
-    method_to_test = generate_topics_success;
+    # Run the shade generation and merging test
+    logger.info("\n=== Starting shade generation and merging test ===")
+    shade_generation_success = run_generate_shades()
+
+    method_to_test = shade_generation_success;
     
     # Final results
     if method_to_test:

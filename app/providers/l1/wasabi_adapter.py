@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 from app.providers.blob_store import BlobStore
 from app.models.l1.topic import Topic, Cluster
-from app.models.l1.shade import Shade
+from app.models.l1.shade import L1Shade
 from app.models.l1.bio import Bio
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ class WasabiStorageAdapter:
         """
         return f"{prefix}{user_id}/{object_id}.json"
     
-    def _validate_model(self, model: Union[Topic, Cluster, Shade, Bio]) -> bool:
+    def _validate_model(self, model: Union[Topic, Cluster, L1Shade, Bio]) -> bool:
         """
         Validate a domain model before storage.
         
@@ -239,13 +239,13 @@ class WasabiStorageAdapter:
             return Cluster.from_dict(data)
         return None
     
-    def store_shade(self, user_id: str, shade: Shade) -> str:
+    def store_shade(self, user_id: str, shade: L1Shade) -> str:
         """
-        Store a Shade domain model in Wasabi.
+        Store a L1Shade domain model in Wasabi.
         
         Args:
             user_id: User ID.
-            shade: Shade domain model.
+            shade: L1Shade domain model.
             
         Returns:
             S3 path where the shade was stored.
@@ -260,16 +260,16 @@ class WasabiStorageAdapter:
         self.store_json(s3_path, shade.to_dict())
         return s3_path
     
-    def get_shade(self, user_id: str, shade_id: str) -> Optional[Shade]:
+    def get_shade(self, user_id: str, shade_id: str) -> Optional[L1Shade]:
         """
-        Retrieve a Shade domain model from Wasabi.
+        Retrieve a L1Shade domain model from Wasabi.
         
         Args:
             user_id: User ID.
             shade_id: Shade ID.
             
         Returns:
-            Shade domain model or None if not found.
+            L1Shade domain model or None if not found.
         """
         s3_path = self._get_object_key(SHADES_PREFIX, user_id, shade_id)
         data = self.get_json(s3_path)
@@ -277,7 +277,7 @@ class WasabiStorageAdapter:
             # Make sure s3_path is in the data
             if not "s3_path" in data:
                 data["s3_path"] = s3_path
-            return Shade.from_dict(data)
+            return L1Shade(**data)
         return None
     
     def store_global_bio(self, user_id: str, version: int, bio: Bio) -> str:

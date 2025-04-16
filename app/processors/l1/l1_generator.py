@@ -11,7 +11,7 @@ from datetime import datetime
 
 from app.models.l1.note import Note
 from app.models.l1.bio import Bio
-from app.models.l1.shade import Shade as L1Shade
+from app.models.l1.shade import L1Shade
 from app.processors.l1.topics_generator import TopicsGenerator
 from app.processors.l1.shade_generator import ShadeGenerator
 from app.processors.l1.biography_generator import BiographyGenerator
@@ -92,119 +92,6 @@ class L1Generator:
             old_outlier_memory_list,
             new_memory_list
         )
-    
-    def gen_shade_for_cluster(
-        self,
-        user_id: str,
-        old_shades: List[Dict[str, Any]],
-        cluster_notes: List[Note],
-        memory_list: List[Dict[str, Any]]
-    ) -> Optional[L1Shade]:
-        """
-        Generate a shade for a cluster.
-        
-        Args:
-            user_id: User ID
-            old_shades: List of existing shades
-            cluster_notes: List of notes in the cluster
-            memory_list: Memory list data
-            
-        Returns:
-            Generated shade or None if generation failed
-        """
-        try:
-            shade = self.shade_generator.generate_shade_for_cluster(
-                user_id,
-                old_shades,
-                cluster_notes,
-                memory_list
-            )
-            
-            # Ensure timeline data is properly stored in metadata
-            if shade and hasattr(shade, 'metadata'):
-                # If timeline data is available but not in metadata
-                if not shade.metadata.get('timelines') and getattr(shade, 'timelines', None):
-                    shade.metadata['timelines'] = shade.timelines
-                    
-            return shade
-            
-        except Exception as e:
-            logger.error(f"Error generating shade for cluster: {str(e)}", exc_info=True)
-            return None
-    
-    def merge_shades(
-        self,
-        user_id: str,
-        shades: List[L1Shade]
-    ) -> MergeShadeResult:
-        """
-        Merge multiple shades into a coherent representation.
-        
-        Args:
-            user_id: User ID
-            shades: List of shades to merge
-            
-        Returns:
-            MergeShadeResult containing success status and merged shades
-        """
-        try:
-            if not shades or len(shades) == 0:
-                logger.warning("No shades to merge")
-                return MergeShadeResult(success=False, merge_shade_list=[])
-            
-            # Single shade doesn't need merging
-            if len(shades) == 1:
-                shade_dict = shades[0].to_dict() if hasattr(shades[0], 'to_dict') else shades[0]
-                return MergeShadeResult(success=True, merge_shade_list=[shade_dict])
-            
-            # Merge shades and get results with timeline data
-            merged_shades = self.shade_generator.merge_shades(user_id, shades)
-            
-            # Ensure metadata with timelines is included
-            for shade in merged_shades:
-                if "metadata" not in shade:
-                    shade["metadata"] = {}
-                if "timelines" not in shade["metadata"] and "timelines" in shade:
-                    shade["metadata"]["timelines"] = shade.get("timelines", [])
-            
-            return MergeShadeResult(
-                success=True,
-                merge_shade_list=merged_shades
-            )
-        except Exception as e:
-            logger.error(f"Error merging shades: {str(e)}", exc_info=True)
-            return MergeShadeResult(success=False, merge_shade_list=[])
-    
-    def improve_shade(
-        self,
-        user_id: str,
-        old_shade: L1Shade,
-        new_notes: List[Note]
-    ) -> Optional[L1Shade]:
-        """
-        Improve an existing shade with new notes.
-        
-        Args:
-            user_id: User ID
-            old_shade: Existing shade to improve
-            new_notes: New notes to incorporate
-            
-        Returns:
-            Improved shade or original shade if improvement failed
-        """
-        try:
-            if not new_notes or len(new_notes) == 0:
-                logger.warning("No new notes provided for shade improvement")
-                return old_shade
-                
-            return self.shade_generator.improve_shade(
-                user_id,
-                old_shade,
-                new_notes
-            )
-        except Exception as e:
-            logger.error(f"Error improving shade: {str(e)}", exc_info=True)
-            return old_shade
     
     def gen_global_biography(
         self,

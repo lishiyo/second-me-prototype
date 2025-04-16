@@ -13,7 +13,7 @@ import weaviate
 from weaviate.util import generate_uuid5
 
 from app.models.l1.topic import Topic, Cluster
-from app.models.l1.shade import Shade
+from app.models.l1.shade import L1Shade
 from app.models.l1.bio import Bio
 from app.models.l1.note import Note, Chunk
 from app.providers.vector_db import VectorDB
@@ -144,13 +144,13 @@ class WeaviateAdapter:
             logger.error(f"Error adding cluster to Weaviate: {e}")
             raise
     
-    def add_shade(self, user_id: str, shade: Shade) -> str:
+    def add_shade(self, user_id: str, shade: L1Shade) -> str:
         """
-        Add a Shade domain model to Weaviate.
+        Add a L1Shade domain model to Weaviate.
         
         Args:
             user_id: User ID.
-            shade: Shade domain model.
+            shade: L1Shade domain model.
             
         Returns:
             Weaviate UUID of the created object.
@@ -167,15 +167,18 @@ class WeaviateAdapter:
             "confidence": shade.confidence
         }
         
-        if shade.metadata:
+        if hasattr(shade, 'metadata') and shade.metadata:
             properties["metadata"] = json.dumps(shade.metadata)
         
         try:
+            # Get embedding from shade or use empty list
+            embedding = getattr(shade, 'embedding', None) or []
+            
             self.client.data_object.create(
                 properties,
                 SHADES_COLLECTION,
                 object_uuid,
-                vector=shade.embedding or []
+                vector=embedding
             )
             return object_uuid
         except Exception as e:
@@ -870,7 +873,7 @@ class WeaviateAdapter:
 
     # Domain model methods
     
-    def _validate_model(self, model: Union[Topic, Cluster, Shade, Bio]) -> bool:
+    def _validate_model(self, model: Union[Topic, Cluster, L1Shade, Bio]) -> bool:
         """
         Validate a domain model before storage.
         
@@ -884,9 +887,11 @@ class WeaviateAdapter:
         if not hasattr(model, 'id') or not model.id:
             raise InvalidModelError("Model must have an ID")
             
-        if not hasattr(model, 'to_dict') or not callable(model.to_dict):
-            raise InvalidModelError("Model must implement to_dict() method")
-            
+        # Special validation for specific model types
+        if isinstance(model, (Topic, Cluster)):
+            if not hasattr(model, 'to_dict') or not callable(model.to_dict):
+                raise InvalidModelError("Model must implement to_dict() method")
+        
         return True
     
     def search_topics_models(self, user_id: str, query_embedding: List[float], 
@@ -972,9 +977,9 @@ class WeaviateAdapter:
     
     def search_shades_models(self, user_id: str, query_embedding: List[float], 
                             min_confidence: float = 0.0,
-                            limit: int = 10) -> List[Shade]:
+                            limit: int = 10) -> List[L1Shade]:
         """
-        Search for shades by similarity and return domain models.
+        Search for shade models by semantic similarity.
         
         Args:
             user_id: User ID.
@@ -983,39 +988,20 @@ class WeaviateAdapter:
             limit: Maximum number of results.
             
         Returns:
-            List of matching Shade domain models with similarity score added to metadata.
+            List of matching L1Shade models.
         """
-        shade_dicts = self.search_shades(user_id, query_embedding, min_confidence, limit)
-        shades = []
-        
-        for shade_dict in shade_dicts:
-            # Create Shade domain model
-            shade = Shade(
-                id=shade_dict.get("shade_id"),
-                name=shade_dict.get("name", ""),
-                summary=shade_dict.get("summary", ""),
-                confidence=shade_dict.get("confidence", 0.0),
-                embedding=shade_dict.get("embedding", [])
-            )
-            
-            # Add metadata if available
-            if "metadata" in shade_dict:
-                shade.metadata = shade_dict["metadata"]
-                
-            # Add certainty score to metadata
-            if "certainty" in shade_dict:
-                if not shade.metadata:
-                    shade.metadata = {}
-                shade.metadata["certainty"] = shade_dict["certainty"]
-                
-            shades.append(shade)
-            
-        return shades
+        shade_dicts = self.search_shades(
+            user_id, 
+            query_embedding, 
+            min_confidence=min_confidence, 
+            limit=limit
+        )
+        return self._convert_shade_dicts_to_models(shade_dicts)
     
     def get_similar_shades_models(self, user_id: str, shade_id: str, 
-                                 limit: int = 5) -> List[Shade]:
+                             limit: int = 5) -> List[L1Shade]:
         """
-        Get similar shades to a given shade and return domain models.
+        Get semantically similar shades to the given shade.
         
         Args:
             user_id: User ID.
@@ -1023,46 +1009,50 @@ class WeaviateAdapter:
             limit: Maximum number of results.
             
         Returns:
-            List of similar Shade domain models with similarity score added to metadata.
+            List of similar L1Shade models.
         """
-        similar_dicts = self.get_similar_shades(user_id, shade_id, limit)
-        return self._convert_shade_dicts_to_models(similar_dicts)
+        shade_dicts = self.get_similar_shades(user_id, shade_id, limit)
+        return self._convert_shade_dicts_to_models(shade_dicts)
     
-    def _convert_shade_dicts_to_models(self, shade_dicts: List[Dict[str, Any]]) -> List[Shade]:
+    def _convert_shade_dicts_to_models(self, shade_dicts: List[Dict[str, Any]]) -> List[L1Shade]:
         """
-        Convert a list of shade dictionaries to domain models.
+        Convert shade dictionaries to L1Shade models.
         
         Args:
-            shade_dicts: List of shade dictionaries.
+            shade_dicts: List of shade dictionaries from Weaviate.
             
         Returns:
-            List of Shade domain models.
+            List of L1Shade models.
         """
-        shades = []
-        
+        models = []
         for shade_dict in shade_dicts:
-            # Create Shade domain model
-            shade = Shade(
-                id=shade_dict.get("shade_id"),
-                name=shade_dict.get("name", ""),
-                summary=shade_dict.get("summary", ""),
-                confidence=shade_dict.get("confidence", 0.0),
-                embedding=shade_dict.get("embedding", [])
-            )
+            # Extract basic properties
+            shade_id = shade_dict.get("shade_id")
+            name = shade_dict.get("name")
+            summary = shade_dict.get("summary")
+            confidence = shade_dict.get("confidence", 0.0)
             
-            # Add metadata if available
-            if "metadata" in shade_dict:
-                shade.metadata = shade_dict["metadata"]
-                
-            # Add similarity score to metadata
-            if "similarity" in shade_dict:
-                if not shade.metadata:
-                    shade.metadata = {}
-                shade.metadata["similarity"] = shade_dict["similarity"]
-                
-            shades.append(shade)
+            # Extract metadata
+            metadata = {}
+            if "metadata" in shade_dict and shade_dict["metadata"]:
+                try:
+                    if isinstance(shade_dict["metadata"], str):
+                        metadata = json.loads(shade_dict["metadata"])
+                    else:
+                        metadata = shade_dict["metadata"]
+                except:
+                    pass
             
-        return shades
+            # Create model
+            models.append(L1Shade(
+                id=shade_id,
+                name=name,
+                summary=summary,
+                confidence=confidence,
+                metadata=metadata
+            ))
+        
+        return models
 
     def get_document_embedding(self, user_id: str, document_id: str) -> Optional[List[float]]:
         """

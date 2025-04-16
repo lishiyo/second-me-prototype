@@ -51,6 +51,22 @@ CREATE TABLE IF NOT EXISTS shades (
 );
 """
 
+# Migration to add new L1Shade fields
+ALTER_SHADES_TABLE = """
+ALTER TABLE shades
+  ADD COLUMN IF NOT EXISTS aspect TEXT,
+  ADD COLUMN IF NOT EXISTS icon TEXT,
+  ADD COLUMN IF NOT EXISTS desc_second_view TEXT,
+  ADD COLUMN IF NOT EXISTS desc_third_view TEXT,
+  ADD COLUMN IF NOT EXISTS content_second_view TEXT,
+  ADD COLUMN IF NOT EXISTS content_third_view TEXT;
+
+-- Update existing records to set content_third_view from summary
+UPDATE shades
+  SET content_third_view = summary
+  WHERE content_third_view IS NULL AND summary IS NOT NULL;
+"""
+
 CREATE_SHADE_CLUSTERS_TABLE = """
 CREATE TABLE IF NOT EXISTS shade_clusters (
   shade_id VARCHAR(36) REFERENCES shades(id),
@@ -119,6 +135,7 @@ ALL_MIGRATIONS = [
     CREATE_CLUSTERS_TABLE,
     CREATE_CLUSTER_DOCUMENTS_TABLE,
     CREATE_SHADES_TABLE,
+    ALTER_SHADES_TABLE,
     CREATE_SHADE_CLUSTERS_TABLE,
     CREATE_GLOBAL_BIOGRAPHIES_TABLE,
     CREATE_STATUS_BIOGRAPHIES_TABLE,

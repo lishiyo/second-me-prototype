@@ -79,6 +79,7 @@ class Chunk:
         topic = data.get("topic", "")
         embedding = data.get("embedding", None)
         chunk_index = data.get("chunk_index", 0)
+        metadata = data.get("metadata", {})
         
         # No longer need to handle dict embeddings here
                 
@@ -89,7 +90,8 @@ class Chunk:
             embedding=embedding,
             tags=tags,
             topic=topic,
-            chunk_index=chunk_index
+            chunk_index=chunk_index,
+            metadata=metadata
         )
     
     # For compatibility with lpm_kernel Chunk class
