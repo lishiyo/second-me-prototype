@@ -277,4 +277,136 @@ class Note:
             tags=data.get("tags", []),
             memory_type=data.get("memory_type", "TEXT"),
             metadata=data.get("metadata", {})
-        ) 
+        )
+    
+    def to_str(self) -> str:
+        """
+        Convert the note to a formatted string, matching LPM Kernel's implementation.
+        Selects the appropriate format based on the memory_type.
+        
+        Returns:
+            Formatted string representation of the note.
+        """
+        # Determine if this is a subject or object note type
+        subject_types = ["TEXT", "MARKDOWN", "PDF"]
+        object_types = ["LINK"]
+        
+        if self.memory_type in subject_types:
+            return self.to_subject_str()
+        elif self.memory_type in object_types:
+            return self.to_object_str()
+        else:
+            # Default to subject format
+            return self.to_subject_str()
+    
+    def to_subject_str(self) -> str:
+        """
+        Convert the note to a string formatted for subject analysis,
+        matching LPM Kernel's to_subject_str implementation.
+        
+        Returns:
+            Formatted string for subject analysis.
+        """
+        note_statement = "---\n"
+        if hasattr(self, "id") and self.id:
+            note_statement += f"[ID]: {self.id}\n"
+        if hasattr(self, "title") and self.title:
+            note_statement += f"[Title]: {self.title}\n"
+        
+        # Format create_time appropriately
+        if hasattr(self, "create_time") and self.create_time:
+            date_str = self.create_time
+            if isinstance(self.create_time, datetime):
+                date_str = self.create_time.strftime("%Y-%m-%d %H:%M:%S")
+            note_statement += f"[Date]: {date_str}\n"
+        
+        if hasattr(self, "memory_type") and self.memory_type:
+            note_statement += f"[Type]: {self.memory_type}\n"
+        
+        note_statement += "---\n\n"
+        
+        # Extract summary and insight
+        summary = ""
+        insight = ""
+        
+        if hasattr(self, "summary"):
+            if isinstance(self.summary, dict):
+                summary = self.summary.get("content", "")
+            elif isinstance(self.summary, str):
+                summary = self.summary
+        
+        if hasattr(self, "insight"):
+            if isinstance(self.insight, dict):
+                insight = self.insight.get("content", "")
+            elif isinstance(self.insight, str):
+                insight = self.insight
+        
+        # Add sections for summary and insight
+        if summary:
+            note_statement += f"----- Doc Summary -----\n{summary}\n\n"
+        
+        if insight:
+            note_statement += f"----- Doc Insight -----\n{insight}\n\n"
+        
+        # Only include content if no summary or insight
+        if not (insight or summary):
+            content = getattr(self, "content", "")
+            note_statement += f"----- Doc Content -----\n{content[:4000]}\n\n"
+        
+        return note_statement
+    
+    def to_object_str(self) -> str:
+        """
+        Convert the note to a string formatted for object analysis,
+        matching LPM Kernel's to_object_str implementation.
+        
+        Returns:
+            Formatted string for object analysis.
+        """
+        note_statement = "---\n"
+        if hasattr(self, "id") and self.id:
+            note_statement += f"[ID]: {self.id}\n"
+        if hasattr(self, "title") and self.title:
+            note_statement += f"[Title]: {self.title}\n"
+        
+        # Format create_time appropriately
+        if hasattr(self, "create_time") and self.create_time:
+            date_str = self.create_time
+            if isinstance(self.create_time, datetime):
+                date_str = self.create_time.strftime("%Y-%m-%d %H:%M:%S")
+            note_statement += f"[Read Time]: {date_str}\n"
+        
+        if hasattr(self, "memory_type") and self.memory_type:
+            note_statement += f"[Meta Type]: {self.memory_type}\n"
+        
+        note_statement += "---\n\n"
+        
+        # Extract summary and insight
+        summary = ""
+        insight = ""
+        
+        if hasattr(self, "summary"):
+            if isinstance(self.summary, dict):
+                summary = self.summary.get("content", "")
+            elif isinstance(self.summary, str):
+                summary = self.summary
+        
+        if hasattr(self, "insight"):
+            if isinstance(self.insight, dict):
+                insight = self.insight.get("content", "")
+            elif isinstance(self.insight, str):
+                insight = self.insight
+        
+        # Add sections, with slightly different order than subject_str
+        if summary:
+            note_statement += f"----- Doc Summary -----\n{summary}\n\n"
+        
+        if not summary and insight:
+            note_statement += f"----- Doc Insight -----\n{insight}\n\n"
+        
+        # Only include content if no summary or insight
+        if not (insight or summary):
+            content = getattr(self, "content", "")
+            note_statement += f"----- Doc Content -----\n{content[:4000]}\n\n"
+        
+        return note_statement 

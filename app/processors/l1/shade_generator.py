@@ -58,56 +58,74 @@ Format your response as a JSON object with the following structure:
 }}
 """
 
-SYS_MERGE = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively.
+SYS_MERGE = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
 """
 
 USR_MERGE = """
-I will provide you with multiple analysis contents regarding different areas of a user's interest. These areas are quite similar or have the potential to be merged.
+The user will provide you with multiple (>2) analysis contents regarding different areas of interest. 
+However, we now consider these areas of interest to be quite similar or have the potential to be merged. 
+Therefore, we need you to help merge these various analyzed interest domains. Your job is to identify the commonalities among these user interest analysis contents, extract a more general common interest domain, and then supplement relevant fields in this newly extracted common interest domain using the provided information from the original analyses.
 
-Your task is to:
-1. Identify the commonalities among these user interest analyses
-2. Extract a more general common interest domain
-3. Create a new merged analysis that combines the insights from the original analyses
+Both the input user interest domain analysis contents and your output of the new common interest domain analysis result must follow this structure:
+---
+**[Name]**: {Interest Domain Name}  
+**[Aspect]**: {Interest Domain Aspect}  
+**[Icon]**: {The icon that best represents this interest}  
+**[Description]**: {Brief description of the user's interests in this area}  
+**[Content]**: {Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning}  
+---
+**[Timelines]**: {The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs}  
+- {CreateTime}, {BriefDesc}, {refMemoryId}  
+- xxxx  
+
+You need to try to merge the interests into an appropriate new interest domain, and then write the corresponding analysis result from the perspective of this new field.
 
 Shades:
 {shades}
 
-Please create a list of merged shades, where each merged shade:
-1. Has a concise name (3-6 words)
-2. Contains a detailed summary synthesizing the information (2-3 paragraphs)
-3. Has a confidence score (0.0-1.0)
-4. Includes relevant timelines from the original shades
+Your generated content should meet the following structure:
+{
+    "newInterestName": "xxx", 
+    "newInterestAspect": "xxx", 
+    "newInterestIcon": "xxx", 
+    "newInterestDesc": "xxx", 
+    "newInterestContent": "xxx", 
+    "newInterestTimelines": [ 
+        {
+            "createTime": "xxx",
+            "refMemoryId": xxx,
+            "description": "xxx"
+        },
+        xxx
+    ] 
+}"""
 
-Format your response as a JSON array of merged shade objects:
-[
-  {{
-    "name": "Merged Interest Domain",
-    "summary": "Detailed summary that synthesizes information from multiple shades...",
-    "confidence": 0.9,
-    "timelines": [
-      {{
-        "createTime": "2023-05-15",
-        "description": "Brief description of event or milestone",
-        "refId": "doc1"
-      }}
-    ]
-  }},
-  {{
-    "name": "Another Merged Domain",
-    "summary": "Detailed summary...",
-    "confidence": 0.85,
-    "timelines": []
-  }}
-]
-"""
+SYS_IMPROVE = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
 
-SYS_IMPROVE = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts.
+Now you need to help complete the following task:
+
+The user will provide you a analysis result of a specific area of interest base on previous memories, with the structure as follows:
+---
+**[Name]**: {Interest Domain Name}
+**[Aspect]**: {Interest Domain Aspect}
+**[Icon]**: {The icon that best represents this interest}
+**[Description]**: {Brief description of the user's interests in this area}
+**[Content]**: {Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning}
+---
+**[Timelines]**  {The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs}
+- {CreateTime}, {BriefDesc}, {refMemoryId}
+- xxxx
 """
 
 USR_IMPROVE = """
-I'll provide you with:
-1. An existing shade analysis for a specific area of interest
-2. Recent memories that may be relevant to this interest area
+Now the user has recently added new memories. You need to appropriately update the previous analysis results based on these newly added memories and the previous memories. 
+
+You need to follow these steps for modification:
+1. First, determine whether the new memories are relevant to the current interest domain [based on the Pre-Version analysis results]. If none are relevant, you can skip the modification steps and ignore the rest.
+2. If there are new memories related to the interest domain [based on the Pre-Version analysis results], then check the Description and Content fields whether update is necessary based on the new information in the memories and make corresponding additions to the Timeline section.
+    2.1 Follow the sentence structure of the previous description. It should be a brief introduction that highlights the specific elements or topics referenced in the user's memory and should be in a single sentence. If the previous description can describe user's interest domain well, then updating the description is not necessary.
+    2.2 The Content section can be relatively longer, so you can make appropriate adjustments to the Content based on the new memory information. If it's an entirely new part under this interest domain, you can supplement this content for the update. The modification length can be slightly longer than the Description section.
+    2.3 For the Timeline section, follow the structure of the Pre-Version analysis results, and add the relevant memory timeline records.
 
 Existing Shade Info:
 {old_shade}
@@ -115,27 +133,19 @@ Existing Shade Info:
 Recent Memories:
 {new_memories}
 
-Your task is to update the previous analysis based on these new memories. Please:
-1. Determine if the new memories are relevant to the current interest domain
-2. If relevant, update the description and content fields as necessary
-3. Add new timeline entries for relevant memories
-
-Format your response as a JSON object with the following structure:
-{{
-  "improved_name": "Updated name if necessary, otherwise keep original", 
-  "improved_summary": "Updated summary incorporating new insights", 
-  "improved_confidence": 0.85,
-  "new_timelines": [
-    {{
-      "createTime": "2023-05-15",
-      "description": "Brief description of new event",
-      "refId": "doc1"
-    }}
-  ]
-}}
-
-If no updates are needed, return the original data with an empty new_timelines array.
-"""
+You should generate follow format:
+{
+    "improveDesc": "xxx", # if no relevant new memories, this field should be None  
+    "improveContent": "xxx", # if no relevant new memories, this field should be None  
+    "improveTimelines": [ # if no relevant new memories, this field should be empty list
+        {
+            "createTime": "xxx",
+            "refMemoryId": xxx,
+            "description": "xxx"
+        },
+        xxx
+    ] # For the improveTimeline field, you only need to add new timeline records for the new memory, and the existing timeline records are generated here.
+}"""
 
 
 class ShadeGenerator:
@@ -164,7 +174,7 @@ class ShadeGenerator:
         """
         self.llm_service = llm_service
         self.wasabi_adapter = wasabi_adapter
-        
+    
         # Initialize parameters for LLM calls that match LPM Kernel
         self.preferred_language = "en"
         self.model_params = {
@@ -272,7 +282,7 @@ class ShadeGenerator:
                 if len(shade_info_list) > 1:
                     # Multiple shades - merge them first
                     logger.info(f"Merge shades Process! {len(shade_info_list)} shades need to be merged!")
-                    raw_shade = self._merge_shades_process(user_id, shade_info_list)
+                    raw_shade = self._merge_shades_process(user_id, shade_info_list, old_memory_list)
                 else:
                     # Single shade - use directly
                     raw_shade = shade_info_list[0]
@@ -290,7 +300,7 @@ class ShadeGenerator:
             # Check if new_shade is empty or None (focus on initial stage)
             if not new_shade:
                 return None
-
+            
             return new_shade
                 
         except Exception as e:
@@ -320,31 +330,46 @@ Domain Description: {shade.desc_third_view or shade.summary}
 Domain Content: {shade.content_third_view or shade.summary}
 Domain Timelines: 
 {
-    "-".join([f"{timeline.get('createTime', '')}, {timeline.get('description', '')}, {timeline.get('refId', '')}" 
+    "-".join([f"{timeline.get('createTime', '')}, {timeline.get('description', '')}, {timeline.get('refMemoryId', timeline.get('refId', ''))}" 
              for timeline in shade.metadata.get("timelines", []) if timeline.get('isNew', True)])
 }
 """
         # Generate second view info using a simplified person perspective shift prompt
-        perspective_shift_prompt = """You are writing an assistant response directly to the user. You need to write a personalized message to the user based on the domain information.
+        perspective_shift_prompt = """**Task:**
+You will be provided with a comprehensive user analysis report with the following structure:
 
-For Domain Description, rewrite it addressing the user directly (using "you", "your") to make it more personal.
+Domain Name: [Domain Name]
+Domain Description: [Domain Description]
+Domain Content: [Domain Content]
+Domain Timelines: 
+- [createTime], [description], [refMemoryId]
+- xxxx
 
-For Domain Content, maintain the essential details but rewrite it addressing the user directly.
+**Requirements:**
+1. **Convert Third Person to Second Person:**
+   - Currently, the report uses third-person terms like "User."
+   - Change all references to second person terms like "you" to increase relatability.
 
-For Domain Timeline, rewrite each event to address the user directly.
+2. **Modify Descriptions:**
+   - Adjust all descriptions in the **Domain Description**, **Domain Content**, and **Timeline description** sections to reflect the second person perspective.
 
-Your response must be a valid JSON in this format:
+3. **Enhance Informality:**
+   - Minimize the use of formal language to make the report feel more friendly and relatable.
+
+**Response Format:**
 {
-  "domainDesc": "Second-person view description addressing the user directly",
-  "domainContent": "Second-person view content addressing the user directly",
-  "domainTimeline": [
-    {
-      "description": "Second-person view of timeline entry",
-      "refMemoryId": "reference ID from original timeline"
-    }
-  ]
-}
-"""
+    "domainName": str (keep the same with the original),
+    "domainDesc": str (modify to second person perspective),
+    "domainContent": str (modify to second person perspective),
+    "domainTimeline": [
+        {
+            "createTime": str (keep the same with the original),
+            "refMemoryId": int (keep the same with the original),
+            "description": str (modify to second person perspective)
+        },
+        ...
+    ]
+}"""
         perspective_shift_message = self._build_message(perspective_shift_prompt, user_prompt)
         
         try:
@@ -390,7 +415,7 @@ Your response must be a valid JSON in this format:
         if not shade_raw_info:
             logger.error(f"Failed to parse the shade generate result: {content}")
             return None
-
+                
         logger.info(f"Shade Generate Result: {shade_raw_info}")
         
         # Extract data mapping LPM Kernel fields to ours
@@ -423,8 +448,8 @@ Your response must be a valid JSON in this format:
         elif "timelines" in shade_raw_info:
             timelines = shade_raw_info.get("timelines", [])
             
-        # Store shade data in Wasabi
-        # TODO: do we do this here?
+        # Store initial shade data in Wasabi
+        # TODO: don't do this here yet?
         s3_path = self._store_shade_data(user_id, {
             "name": name,
             "summary": summary,
@@ -460,7 +485,7 @@ Your response must be a valid JSON in this format:
         import inspect
         if 's3_path' in inspect.signature(L1Shade.__init__).parameters:
             shade_kwargs["s3_path"] = s3_path
-        
+            
         # Create shade object
         shade = L1Shade(**shade_kwargs)
         
@@ -490,8 +515,8 @@ Your response must be a valid JSON in this format:
                 logger.warning("No notes provided for shade generation")
                 return None
             
-            # Format documents for prompt like LPM Kernel
-            user_prompt = self._format_notes_for_prompt(notes)
+            # Format documents for prompt using Note's to_str method
+            user_prompt = "\n\n".join([note.to_str() for note in notes])
             
             # Build message like LPM Kernel
             shade_generate_message = self._build_message(SYS_SHADE, USR_SHADE.format(documents=user_prompt))
@@ -508,6 +533,24 @@ Your response must be a valid JSON in this format:
         except Exception as e:
             logger.error(f"Error in initial shade process: {str(e)}", exc_info=True)
             return None
+
+    def _format_new_notes_for_improvement(self, new_notes: List[Note]) -> str:
+        """
+        Format new notes to include in improvement prompt, matching LPM Kernel's expected format.
+        
+        Args:
+            new_notes: List of new notes to format
+            
+        Returns:
+            Formatted notes text
+        """
+        if not new_notes:
+            return ""
+        
+        formatted_text = "**New Memories**:\n\n"
+        formatted_text += "\n\n".join([note.to_str() for note in new_notes])
+        
+        return formatted_text
     
     def __shade_merge_postprocess(self, content: str, user_id: str, shade_objects: List[L1Shade]) -> Optional[L1Shade]:
         """
@@ -562,16 +605,16 @@ Your response must be a valid JSON in this format:
         
         # Calculate center embedding if available
         center_embedding = self._calculate_merged_center_embedding(shade_objects)
-        
+                
         # Gather all timelines from source shades
         all_timelines = []
         for shade in shade_objects:
             if hasattr(shade, "metadata") and "timelines" in shade.metadata:
                 all_timelines.extend(shade.metadata["timelines"])
-        
+                
         # Add any new timelines from the LLM response
         all_timelines.extend(timelines)
-        
+                
         # Remove potential duplicates (based on refId)
         unique_timelines = []
         seen_ref_ids = set()
@@ -582,7 +625,7 @@ Your response must be a valid JSON in this format:
             if ref_id:
                 seen_ref_ids.add(ref_id)
             unique_timelines.append(timeline)
-            
+                    
         # Sort timelines by createTime if available
         sorted_timelines = sorted(
             unique_timelines,
@@ -604,7 +647,8 @@ Your response must be a valid JSON in this format:
         
         if center_embedding is not None:
             merged_shade_data["center_embedding"] = center_embedding
-            
+        
+        # TODO: do we do this here?
         s3_path = self._store_merged_shade_data(user_id, merged_shade_data)
         
         # Create the merged shade object
@@ -646,7 +690,8 @@ Your response must be a valid JSON in this format:
     def _merge_shades_process(
         self,
         user_id: str,
-        shades: List[Dict[str, Any]]
+        shades: List[Dict[str, Any]],
+        old_memory_list: List[Note] = []
     ) -> Optional[L1Shade]:
         """
         Process the merging of multiple shades, matching LPM Kernel's approach.
@@ -654,6 +699,7 @@ Your response must be a valid JSON in this format:
         Args:
             user_id: User ID
             shades: List of shades to merge
+            old_memory_list: List of old memories (optional, for compatibility with lpm_kernel)
             
         Returns:
             Merged shade or None if merging failed
@@ -675,10 +721,10 @@ Your response must be a valid JSON in this format:
                 logger.warning("No valid shades for merging")
                 return None
             
-            # Format shades for prompt
+            # Format shades for prompt, matching lpm_kernel's approach
             shades_text = self._format_shades_for_prompt(shade_objects)
             
-            # Generate merged shade using LLM
+            # Generate merged shade using LLM, matching lpm_kernel's approach
             merge_shades_message = self._build_message(SYS_MERGE, USR_MERGE.format(shades=shades_text))
             
             logger.info(f"Merging {len(shade_objects)} shades")
@@ -691,7 +737,7 @@ Your response must be a valid JSON in this format:
             
         except Exception as e:
             logger.error(f"Error in merge shades process: {str(e)}", exc_info=True)
-            return None if len(shades) > 1 else shades[0]
+            return None if len(shades) > 1 else shade_objects[0]
             
     def __shade_improve_postprocess(self, content: str, user_id: str, old_shade: L1Shade, new_notes: List[Note]) -> Optional[L1Shade]:
         """
@@ -716,37 +762,27 @@ Your response must be a valid JSON in this format:
         
         logger.info(f"Shade Improve Result: {improved_data}")
         
-        # Extract improved data using LPM Kernel field names with fallbacks
+        # Extract improved data using LPM Kernel field names specifically
         improved_name = old_shade.name
-        if "improveInterestName" in improved_data:
-            improved_name = improved_data.get("improveInterestName", old_shade.name)
-        elif "improved_name" in improved_data:
-            improved_name = improved_data.get("improved_name", old_shade.name)
         
-        # Get descriptions and content updates
+        # Get descriptions and content updates - prioritize LPM Kernel naming
         improved_desc_third_view = old_shade.desc_third_view
-        if "improveDesc" in improved_data:
-            improved_desc_third_view = improved_data.get("improveDesc", old_shade.desc_third_view)
+        if "improveDesc" in improved_data and improved_data["improveDesc"] is not None:
+            improved_desc_third_view = improved_data.get("improveDesc")
         
         improved_content_third_view = old_shade.content_third_view
-        if "improveContent" in improved_data:
-            improved_content_third_view = improved_data.get("improveContent", old_shade.content_third_view)
+        if "improveContent" in improved_data and improved_data["improveContent"] is not None:
+            improved_content_third_view = improved_data.get("improveContent")
         
-        # Update summary from content if possible
+        # Update summary from content if available
         improved_summary = improved_content_third_view
-        if not improved_summary and "improved_summary" in improved_data:
-            improved_summary = improved_data.get("improved_summary", old_shade.summary)
         
         improved_confidence = old_shade.confidence
-        if "improved_confidence" in improved_data:
-            improved_confidence = improved_data.get("improved_confidence", old_shade.confidence)
         
-        # Get new timelines from either format
+        # Get new timelines - prioritize LPM Kernel naming
         new_timelines = []
         if "improveTimelines" in improved_data:
             new_timelines = improved_data.get("improveTimelines", [])
-        elif "new_timelines" in improved_data:
-            new_timelines = improved_data.get("new_timelines", [])
         
         # Update the shade with improved data
         updated_shade_data = {
@@ -782,6 +818,7 @@ Your response must be a valid JSON in this format:
         improved_shade = L1Shade(**updated_shade_data)
         
         # Store improved shade data if significant changes made
+        # TODO: don't do this here yet?
         if (improved_summary != old_shade.summary or 
             improved_desc_third_view != old_shade.desc_third_view or 
             improved_content_third_view != old_shade.content_third_view or
@@ -843,7 +880,7 @@ Your response must be a valid JSON in this format:
             
             # Format the existing shade info and new notes for prompt
             old_shade_text = self._format_shade_for_improvement(old_shade)
-            new_notes_text = self._format_notes_for_prompt(new_notes)
+            new_notes_text = self._format_new_notes_for_improvement(new_notes)
             
             # Generate improved shade using LLM
             # Use _build_message like LPM Kernel
@@ -865,26 +902,9 @@ Your response must be a valid JSON in this format:
             logger.error(f"Error improving shade: {str(e)}", exc_info=True)
             return old_shade if isinstance(old_shade, L1Shade) else None
     
-    def _format_notes_for_prompt(self, notes: List[Note]) -> str:
-        """
-        Format notes for inclusion in LLM prompt.
-        
-        Args:
-            notes: List of notes to format
-            
-        Returns:
-            Formatted notes text
-        """
-        formatted_text = ""
-        for i, note in enumerate(notes):
-            formatted_text += f"Document {i+1}: {note.title}\n"
-            formatted_text += f"Content: {note.content[:1000]}...\n\n"  # Limit content length
-        
-        return formatted_text
-    
     def _format_shades_for_prompt(self, shades: List[L1Shade]) -> str:
         """
-        Format shades for inclusion in LLM prompt.
+        Format shades for inclusion in LLM prompt, matching lpm_kernel's approach.
         
         Args:
             shades: List of shades to format
@@ -892,26 +912,12 @@ Your response must be a valid JSON in this format:
         Returns:
             Formatted shades text
         """
-        formatted_text = ""
-        for i, shade in enumerate(shades):
-            name = shade.name if hasattr(shade, 'name') else "Unknown Shade"
-            summary = shade.summary if hasattr(shade, 'summary') else ""
-            
-            formatted_text += f"Shade {i+1}: {name}\n"
-            formatted_text += f"Summary: {summary}\n"
-            
-            # Add timelines if available
-            if hasattr(shade, 'metadata') and 'timelines' in shade.metadata and shade.metadata['timelines']:
-                formatted_text += "Timelines:\n"
-                for timeline in shade.metadata['timelines']:
-                    create_time = timeline.get('createTime', '')
-                    description = timeline.get('description', '')
-                    ref_id = timeline.get('refId', '')
-                    formatted_text += f"- {create_time}, {description}, {ref_id}\n"
-            
-            formatted_text += "\n"
-        
-        return formatted_text
+        return "\n\n".join(
+            [
+                f"User Interest Domain {i+1} Analysis:\n{shade.to_str()}"
+                for i, shade in enumerate(shades)
+            ]
+        )
     
     def _parse_shade_response(self, content: str) -> Dict[str, Any]:
         """
@@ -1135,7 +1141,7 @@ Your response must be a valid JSON in this format:
     
     def _format_shade_for_improvement(self, shade: L1Shade) -> str:
         """
-        Format a shade for inclusion in improvement prompt.
+        Format a shade for inclusion in improvement prompt, matching LPM Kernel's expected format.
         
         Args:
             shade: Shade to format
@@ -1143,18 +1149,31 @@ Your response must be a valid JSON in this format:
         Returns:
             Formatted shade text
         """
+        # Format timelines
         timelines_text = ""
-        if hasattr(shade, "metadata") and "timelines" in shade.metadata:
-            for i, timeline in enumerate(shade.metadata["timelines"]):
+        if hasattr(shade, "timelines") and shade.timelines:
+            for timeline in shade.timelines:
+                timelines_text += f"- {timeline.createTime}, {timeline.descThirdView}, {timeline.refMemoryId}\n"
+        elif hasattr(shade, "metadata") and "timelines" in shade.metadata:
+            for timeline in shade.metadata["timelines"]:
                 create_time = timeline.get("createTime", "")
                 description = timeline.get("description", "")
-                ref_id = timeline.get("refId", "")
+                ref_id = timeline.get("refId", timeline.get("refMemoryId", ""))
                 timelines_text += f"- {create_time}, {description}, {ref_id}\n"
         
-        formatted_text = f"""Name: {shade.name}
-Summary: {shade.summary}
-Confidence: {shade.confidence}
-Timelines:
+        # Format the shade in the exact structure expected by LPM Kernel
+        formatted_text = f"""---
+**[Name]**: {shade.name}
+**[Aspect]**: {shade.aspect}
+**[Icon]**: {shade.icon}
+**[Description]**: 
+{shade.desc_third_view or shade.summary}
+
+**[Content]**: 
+{shade.content_third_view or shade.summary}
+---
+
+**[Timelines]**:
 {timelines_text}
 """
         return formatted_text

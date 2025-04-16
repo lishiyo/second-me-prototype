@@ -4,7 +4,7 @@ from datetime import datetime
 from app.models.l1 import (
     Note, Chunk, Topic, Cluster, Memory, 
     L1Shade, ShadeInfo, ShadeMergeInfo, MergedShadeResult,
-    Bio, L1GenerationResult
+    Bio, L1GenerationResult, ShadeTimeline
 )
 
 
@@ -145,10 +145,10 @@ class TestL1Models(unittest.TestCase):
             metadata={"source": "test"},
             aspect="Personality",
             icon="🧠",
-            desc_third_view="Description in third view",
-            content_third_view="Content in third view",
-            desc_second_view="Description in second view",
-            content_second_view="Content in second view"
+            descThirdView="Description in third view",
+            contentThirdView="Content in third view",
+            descSecondView="Description in second view",
+            contentSecondView="Content in second view"
         )
         
         # Test serialization/deserialization
@@ -162,10 +162,10 @@ class TestL1Models(unittest.TestCase):
         self.assertEqual(shade_info.metadata, shade_info2.metadata)
         self.assertEqual(shade_info.aspect, shade_info2.aspect)
         self.assertEqual(shade_info.icon, shade_info2.icon)
-        self.assertEqual(shade_info.desc_third_view, shade_info2.desc_third_view)
-        self.assertEqual(shade_info.content_third_view, shade_info2.content_third_view)
-        self.assertEqual(shade_info.desc_second_view, shade_info2.desc_second_view)
-        self.assertEqual(shade_info.content_second_view, shade_info2.content_second_view)
+        self.assertEqual(shade_info.descThirdView, shade_info2.descThirdView)
+        self.assertEqual(shade_info.contentThirdView, shade_info2.contentThirdView)
+        self.assertEqual(shade_info.descSecondView, shade_info2.descSecondView)
+        self.assertEqual(shade_info.contentSecondView, shade_info2.contentSecondView)
     
     def test_shade(self):
         """Test L1Shade model."""
@@ -176,10 +176,10 @@ class TestL1Models(unittest.TestCase):
             summary="This is a test shade",
             aspect="Personality",
             icon="🧠",
-            desc_third_view="Description in third view",
-            content_third_view="Content in third view",
-            desc_second_view="Description in second view",
-            content_second_view="Content in second view",
+            descThirdView="Description in third view",
+            contentThirdView="Content in third view",
+            descSecondView="Description in second view",
+            contentSecondView="Content in second view",
             confidence=0.85,
             metadata={"source": "test"}
         )
@@ -193,83 +193,58 @@ class TestL1Models(unittest.TestCase):
         self.assertEqual(shade.summary, shade2.summary)
         self.assertEqual(shade.aspect, shade2.aspect)
         self.assertEqual(shade.icon, shade2.icon)
-        self.assertEqual(shade.desc_third_view, shade2.desc_third_view)
-        self.assertEqual(shade.content_third_view, shade2.content_third_view)
-        self.assertEqual(shade.desc_second_view, shade2.desc_second_view)
-        self.assertEqual(shade.content_second_view, shade2.content_second_view)
+        self.assertEqual(shade.descThirdView, shade2.descThirdView)
+        self.assertEqual(shade.contentThirdView, shade2.contentThirdView)
+        self.assertEqual(shade.descSecondView, shade2.descSecondView)
+        self.assertEqual(shade.contentSecondView, shade2.contentSecondView)
         self.assertEqual(shade.confidence, shade2.confidence)
         self.assertEqual(shade.metadata, shade2.metadata)
     
     def test_shade_merge_info(self):
         """Test ShadeMergeInfo model."""
-        # Create a shade merge info
+        # Create an instance of ShadeMergeInfo
         shade_merge_info = ShadeMergeInfo(
-            shade_id="shade1",
-            name="Test Shade",
-            aspect="Personality",
-            icon="🧠",
-            desc_third_view="This is a description in third person",
-            content_third_view="This is content in third person",
-            desc_second_view="This is a description in second person",
-            content_second_view="This is content in second person",
-            cluster_info={"cluster_id": "cluster1", "memory_count": 5},
-            metadata={"source": "test"}
+            shade_id="shade_id_1",
+            name="Shade Name",
+            aspect="Personal Growth",
+            icon="🌱",
+            descThirdView="This person is characterized by...",
+            contentThirdView="Detailed information about the shade...",
+            timelines=[
+                ShadeTimeline(
+                    refMemoryId="memory1",
+                    createTime="1234567890",
+                    descThirdView="In 2021, they started...",
+                    descSecondView="In 2021, you started..."
+                )
+            ]
         )
-        
-        # Test serialization/deserialization
+
+        # Convert to dict
         shade_merge_info_dict = shade_merge_info.to_dict()
-        shade_merge_info2 = ShadeMergeInfo.from_dict(shade_merge_info_dict)
-        
-        self.assertEqual(shade_merge_info.shade_id, shade_merge_info2.shade_id)
-        self.assertEqual(shade_merge_info.name, shade_merge_info2.name)
-        self.assertEqual(shade_merge_info.aspect, shade_merge_info2.aspect)
-        self.assertEqual(shade_merge_info.icon, shade_merge_info2.icon)
-        self.assertEqual(shade_merge_info.desc_third_view, shade_merge_info2.desc_third_view)
-        self.assertEqual(shade_merge_info.content_third_view, shade_merge_info2.content_third_view)
-        self.assertEqual(shade_merge_info.desc_second_view, shade_merge_info2.desc_second_view)
-        self.assertEqual(shade_merge_info.content_second_view, shade_merge_info2.content_second_view)
-        self.assertEqual(shade_merge_info.cluster_info, shade_merge_info2.cluster_info)
-        self.assertEqual(shade_merge_info.metadata, shade_merge_info2.metadata)
-        
-        # Test creation from L1Shade
-        shade = L1Shade(
-            id="shade1",
-            name="Test Shade",
-            aspect="Personality",
-            icon="🧠",
-            desc_third_view="This is a description in third person",
-            content_third_view="This is content in third person",
-            desc_second_view="This is a description in second person",
-            content_second_view="This is content in second person",
-            metadata={"source": "test"}
-        )
-        
-        shade_merge_info3 = ShadeMergeInfo.from_shade(shade)
-        
-        self.assertEqual(shade.id, shade_merge_info3.shade_id)
-        self.assertEqual(shade.name, shade_merge_info3.name)
-        self.assertEqual(shade.aspect, shade_merge_info3.aspect)
-        self.assertEqual(shade.icon, shade_merge_info3.icon)
-        self.assertEqual(shade.desc_third_view, shade_merge_info3.desc_third_view)
-        self.assertEqual(shade.content_third_view, shade_merge_info3.content_third_view)
-        self.assertEqual(shade.desc_second_view, shade_merge_info3.desc_second_view)
-        self.assertEqual(shade.content_second_view, shade_merge_info3.content_second_view)
-        self.assertEqual(shade.metadata, shade_merge_info3.metadata)
-        
-        # Test helper methods
-        test_desc = "Improved description"
-        test_content = "Improved content"
-        shade_merge_info.improve_shade_info(test_desc, test_content)
-        self.assertEqual(shade_merge_info.desc_third_view, test_desc)
-        self.assertEqual(shade_merge_info.content_third_view, test_content)
-        
-        # Test string representation
-        str_rep = shade_merge_info.to_str()
-        self.assertIn("**[Name]**: Test Shade", str_rep)
-        self.assertIn("**[Aspect]**: Personality", str_rep)
-        self.assertIn("**[Icon]**: 🧠", str_rep)
-        self.assertIn(test_desc, str_rep)
-        self.assertIn(test_content, str_rep)
+
+        # Verify that the dict contains the correct values
+        assert shade_merge_info_dict["shade_id"] == "shade_id_1"
+        assert shade_merge_info_dict["name"] == "Shade Name"
+        assert shade_merge_info_dict["aspect"] == "Personal Growth"
+        assert shade_merge_info_dict["icon"] == "🌱"
+        assert shade_merge_info_dict["descThirdView"] == "This person is characterized by..."
+        assert shade_merge_info_dict["contentThirdView"] == "Detailed information about the shade..."
+        assert len(shade_merge_info_dict["timelines"]) == 1
+        assert shade_merge_info_dict["timelines"][0]["refMemoryId"] == "memory1"
+
+        # Create from dict
+        shade_merge_info_2 = ShadeMergeInfo.from_dict(shade_merge_info_dict)
+
+        # Verify that the new instance has the correct values
+        assert shade_merge_info_2.shade_id == "shade_id_1"
+        assert shade_merge_info_2.name == "Shade Name"
+        assert shade_merge_info_2.aspect == "Personal Growth"
+        assert shade_merge_info_2.icon == "🌱"
+        assert shade_merge_info_2.descThirdView == "This person is characterized by..."
+        assert shade_merge_info_2.contentThirdView == "Detailed information about the shade..."
+        assert len(shade_merge_info_2.timelines) == 1
+        assert shade_merge_info_2.timelines[0].refMemoryId == "memory1"
     
     def test_merged_shade_result(self):
         """Test MergedShadeResult model."""
@@ -282,13 +257,41 @@ class TestL1Models(unittest.TestCase):
             ]
         )
         
-        # Test serialization/deserialization
+        # Test to_dict method
         merged_shade_result_dict = merged_shade_result.to_dict()
-        merged_shade_result2 = MergedShadeResult.from_dict(merged_shade_result_dict)
+        assert merged_shade_result_dict["success"] == True
+        assert len(merged_shade_result_dict["merge_shade_list"]) == 2
+        assert merged_shade_result_dict["merge_shade_list"][0]["id"] == "merged1"
+        assert merged_shade_result_dict["merge_shade_list"][0]["name"] == "Merged Shade 1"
+        assert merged_shade_result_dict["merge_shade_list"][1]["id"] == "merged2"
+        assert merged_shade_result_dict["error"] is None
         
-        self.assertEqual(merged_shade_result.success, merged_shade_result2.success)
-        self.assertEqual(len(merged_shade_result.merge_shade_list), len(merged_shade_result2.merge_shade_list))
-        self.assertEqual(merged_shade_result.merge_shade_list[0]["id"], merged_shade_result2.merge_shade_list[0]["id"])
+        # Test from_dict method
+        merged_shade_result2 = MergedShadeResult.from_dict(merged_shade_result_dict)
+        assert merged_shade_result2.success == True
+        assert len(merged_shade_result2.merge_shade_list) == 2
+        assert merged_shade_result2.merge_shade_list[0]["id"] == "merged1"
+        assert merged_shade_result2.merge_shade_list[0]["name"] == "Merged Shade 1"
+        assert merged_shade_result2.merge_shade_list[1]["id"] == "merged2"
+        assert merged_shade_result2.error is None
+        
+        # Test with error
+        error_result = MergedShadeResult(
+            success=False,
+            merge_shade_list=[],
+            error="Failed to merge shades"
+        )
+        
+        error_dict = error_result.to_dict()
+        assert error_dict["success"] == False
+        assert len(error_dict["merge_shade_list"]) == 0
+        assert error_dict["error"] == "Failed to merge shades"
+        
+        # Test from dict with error
+        error_result2 = MergedShadeResult.from_dict(error_dict)
+        assert error_result2.success == False
+        assert len(error_result2.merge_shade_list) == 0
+        assert error_result2.error == "Failed to merge shades"
     
     def test_bio(self):
         """Test Bio model."""
@@ -369,6 +372,76 @@ class TestL1Models(unittest.TestCase):
         self.assertEqual(failure_result.error, "Test error")
         # Check clusters structure in failure case
         self.assertEqual(failure_result.clusters, {"clusterList": []})
+
+    def test_shade_timeline(self):
+        """Test the ShadeTimeline class."""
+        # Create a timeline entry
+        timeline = ShadeTimeline(
+            refMemoryId="mem_123",
+            createTime="2023-01-01T12:00:00",
+            descSecondView="You went to the park yesterday.",
+            descThirdView="User went to the park yesterday.",
+            isNew=True
+        )
+        
+        # Test property getters
+        self.assertEqual(timeline.refMemoryId, "mem_123")
+        self.assertEqual(timeline.createTime, "2023-01-01T12:00:00")
+        self.assertEqual(timeline.descSecondView, "You went to the park yesterday.")
+        self.assertEqual(timeline.descThirdView, "User went to the park yesterday.")
+        self.assertEqual(timeline.isNew, True)
+        
+        # Test conversion to dictionary
+        timeline_dict = timeline.to_dict()
+        self.assertEqual(timeline_dict["refMemoryId"], "mem_123")
+        self.assertEqual(timeline_dict["createTime"], "2023-01-01T12:00:00")
+        self.assertEqual(timeline_dict["description"], "User went to the park yesterday.")
+        self.assertEqual(timeline_dict["description_second_view"], "You went to the park yesterday.")
+        self.assertTrue(timeline_dict["isNew"])
+        self.assertEqual(timeline_dict["refId"], "mem_123")  # Should include both for compatibility
+        
+        # Test conversion to JSON (lpm_kernel format)
+        timeline_json = timeline.to_json()
+        self.assertEqual(timeline_json["refMemoryId"], "mem_123")
+        self.assertEqual(timeline_json["createTime"], "2023-01-01T12:00:00")
+        self.assertEqual(timeline_json["descThirdView"], "User went to the park yesterday.")
+        self.assertEqual(timeline_json["descSecondView"], "You went to the park yesterday.")
+        
+        # Test creation from raw format dictionary with our field naming
+        raw_data = {
+            "refMemoryId": "mem_456",
+            "createTime": "2023-02-01T12:00:00",
+            "description": "User called a friend.",
+            "description_second_view": "You called a friend.",
+            "isNew": False
+        }
+        timeline2 = ShadeTimeline.from_raw_format(raw_data)
+        self.assertEqual(timeline2.refMemoryId, "mem_456")
+        self.assertEqual(timeline2.descThirdView, "User called a friend.")
+        self.assertEqual(timeline2.descSecondView, "You called a friend.")
+        self.assertFalse(timeline2.isNew)
+        
+        # Test creation from raw format dictionary with lpm_kernel's field naming
+        raw_data2 = {
+            "refId": "mem_789",
+            "createTime": "2023-03-01T12:00:00",
+            "descThirdView": "User wrote an email.",
+            "descSecondView": "You wrote an email.",
+            "isNew": True
+        }
+        timeline3 = ShadeTimeline.from_raw_format(raw_data2)
+        self.assertEqual(timeline3.refMemoryId, "mem_789")
+        self.assertEqual(timeline3.descThirdView, "User wrote an email.")
+        self.assertEqual(timeline3.descSecondView, "You wrote an email.")
+        
+        # Test add_second_view method
+        timeline4 = ShadeTimeline(
+            refMemoryId="mem_999",
+            createTime="2023-04-01T12:00:00",
+            descThirdView="User went shopping."
+        )
+        timeline4.add_second_view("You went shopping.")
+        self.assertEqual(timeline4.descSecondView, "You went shopping.")
 
 
 if __name__ == "__main__":

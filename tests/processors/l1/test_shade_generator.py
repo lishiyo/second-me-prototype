@@ -131,17 +131,6 @@ def test_merge_shades_multiple(shade_generator, sample_shades, mock_merge_llm_se
         shade_generator.llm_service = original_llm_service
 
 
-def test_format_notes_for_prompt(shade_generator, sample_notes):
-    """Test formatting notes for inclusion in LLM prompt."""
-    result = shade_generator._format_notes_for_prompt(sample_notes[:2])
-    
-    # Check format
-    assert "Document 1" in result
-    assert "Content:" in result
-    assert sample_notes[0].title in result
-    assert sample_notes[0].content[:50] in result  # Check start of content
-
-
 def test_format_shades_for_prompt(shade_generator, sample_shades):
     """Test formatting shades for inclusion in LLM prompt."""
     result = shade_generator._format_shades_for_prompt(sample_shades[:2])

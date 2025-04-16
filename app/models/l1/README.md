@@ -66,17 +66,35 @@ Key attributes:
 
 ## Knowledge Models
 
-### Shade
+### L1Shade
 
-`Shade` represents a knowledge aspect extracted from document clusters. It contains insights derived from related documents.
+`L1Shade` represents a knowledge aspect extracted from document clusters. It contains insights derived from related documents and is designed to be compatible with LPM Kernel's Shade model.
 
 Key attributes:
 - `id`: Unique identifier
+- `user_id`: ID of the user who owns this shade
 - `name`: Shade name
 - `summary`: Shade summary
-- `content`: Detailed content
 - `confidence`: Confidence score
-- `source_clusters`: List of source cluster IDs
+- `aspect`: Category or aspect of life this shade represents
+- `icon`: Emoji or icon representing this shade
+- `desc_third_view`: Third-person description (how others would describe it)
+- `content_third_view`: Detailed third-person content 
+- `desc_second_view`: Second-person description (how you would be described)
+- `content_second_view`: Detailed second-person content
+- `metadata`: Additional metadata, including timelines
+- `timelines`: Timeline entries showing the evolution of this knowledge aspect
+
+### ShadeTimeline
+
+`ShadeTimeline` represents a point in the chronological evolution of a shade. It contains information about events related to the shade.
+
+Key attributes:
+- `ref_memory_id`: Reference to the original memory/document
+- `create_time`: When the event occurred
+- `desc_third_view`: Third-person description of the event
+- `desc_second_view`: Second-person description of the event
+- `is_new`: Whether this is a newly added timeline entry
 
 ### ShadeInfo
 
@@ -87,18 +105,21 @@ Key attributes:
 - `name`: Shade name
 - `content`: Shade content
 - `confidence`: Confidence score
+- `aspect`: Category or aspect of life this shade represents
+- `icon`: Emoji or icon representing this shade
 
 ### ShadeMergeInfo
 
-`ShadeMergeInfo` contains information about shades to be merged. It's used in the shade merging process.
+`ShadeMergeInfo` contains information about shades to be merged. It's used in the shade merging process and is aligned with LPM Kernel's structure.
 
 Key attributes:
 - `shade_id`: Shade ID
 - `name`: Shade name
-- `summary`: Shade summary
-- `content`: Shade content
-- `confidence`: Confidence score
-- `source_clusters`: List of source cluster IDs
+- `aspect`: Category or aspect this shade represents
+- `icon`: Emoji or icon representing this shade
+- `desc_third_view`: Third-person description of the shade
+- `content_third_view`: Detailed third-person content
+- `timelines`: Timeline entries showing shade evolution
 
 ### MergedShadeResult
 
