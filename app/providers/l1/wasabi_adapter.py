@@ -11,6 +11,7 @@ import os
 from typing import Dict, Any, Optional, Union, List
 import uuid
 from unittest.mock import MagicMock
+import numpy as np
 
 from app.providers.blob_store import BlobStore
 from app.models.l1.topic import Topic, Cluster
@@ -117,14 +118,19 @@ class WasabiStorageAdapter:
     
     def store_json(self, object_key: str, data: Dict[str, Any]) -> None:
         """
-        Store JSON data in Wasabi.
+        Store JSON data in S3.
         
         Args:
-            object_key: S3 object key.
-            data: JSON-serializable data to store.
+            object_key: S3 object key
+            data: Data to store
+            
+        Raises:
+            WasabiStorageError: If an error occurs while storing the data
         """
         try:
-            data_json = json.dumps(data)
+            # Convert numpy arrays to lists before JSON serialization
+            data_serializable = self._make_json_serializable(data)
+            data_json = json.dumps(data_serializable)
             self.blob_store.put_object(
                 key=object_key,
                 data=data_json.encode('utf-8'),
@@ -133,6 +139,35 @@ class WasabiStorageAdapter:
         except Exception as e:
             logger.error(f"Error storing JSON data in Wasabi: {e}")
             raise
+    
+    def _make_json_serializable(self, obj):
+        """
+        Convert objects to JSON serializable types recursively.
+        Specifically handles numpy arrays and other non-serializable types.
+        
+        Args:
+            obj: Object to convert
+            
+        Returns:
+            JSON serializable version of the object
+        """
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, dict):
+            return {k: self._make_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list) or isinstance(obj, tuple):
+            return [self._make_json_serializable(item) for item in obj]
+        elif hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
+            # Handle objects with to_dict() method
+            return self._make_json_serializable(obj.to_dict())
+        else:
+            return obj
     
     def get_json(self, object_key: str) -> Optional[Dict[str, Any]]:
         """
