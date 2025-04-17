@@ -158,15 +158,32 @@ class Bio:
         global_bio_statement += f"\n**[Current Shades]**\n"
         for i, shade in enumerate(self.shades_list):
             # Format each shade similar to how ShadeInfo.to_str() would do it
-            shade_str = f"**[Name]**: {shade.get('name', '')}\n"
-            shade_str += f"**[Description]**: {shade.get('summary', '')}\n"
+            # Handle both dictionary access and object attribute access
+            if isinstance(shade, dict):
+                name = shade.get('name', '')
+                summary = shade.get('summary', '')
+                timelines = shade.get('timelines', [])
+            else:
+                # Handle object attribute access
+                name = getattr(shade, 'name', '')
+                summary = getattr(shade, 'summary', '')
+                timelines = getattr(shade, 'timelines', [])
+            
+            shade_str = f"**[Name]**: {name}\n"
+            shade_str += f"**[Description]**: {summary}\n"
             
             # Add timeline information if available
-            timelines = shade.get('timelines', [])
             if timelines:
                 shade_str += "**[Timelines]**:\n"
                 for timeline in timelines:
-                    shade_str += f"- {timeline.get('created_at', '')}, {timeline.get('description', '')}\n"
+                    if isinstance(timeline, dict):
+                        created_at = timeline.get('created_at', '')
+                        description = timeline.get('description', '')
+                    else:
+                        created_at = getattr(timeline, 'created_at', '')
+                        description = getattr(timeline, 'description', '')
+                    
+                    shade_str += f"- {created_at}, {description}\n"
             
             global_bio_statement += shade_str
             global_bio_statement += "\n==============\n"
@@ -189,7 +206,15 @@ class Bio:
         
         # Add preview of each shade
         for shade in self.shades_list:
-            interests_preference_field += f"- {shade.get('name', '')}: {shade.get('summary', '')}\n"
+            # Handle both dictionary access and object attribute access
+            if isinstance(shade, dict):
+                name = shade.get('name', '')
+                summary = shade.get('summary', '')
+            else:
+                name = getattr(shade, 'name', '')
+                summary = getattr(shade, 'summary', '')
+                
+            interests_preference_field += f"- {name}: {summary}\n"
         
         # Use either third-person or second-person summary based on the second_view parameter
         if not second_view:

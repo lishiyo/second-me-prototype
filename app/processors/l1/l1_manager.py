@@ -163,9 +163,9 @@ class L1Manager:
             bio = self.biography_generator.generate_global_biography(
                 user_id=user_id,
                 old_profile=Bio(
-                    shades_list=merged_shades_result.merge_shade_list
-                    if merged_shades_result.success
-                    else []
+                    shades_list=(merged_shades_result.merge_shade_list 
+                    if merged_shades_result.success and merged_shades_result.merge_shade_list 
+                    else shades) # Fallback to unmerged shades if none can be merged
                 ),
                 cluster_list=clusters.get("clusterList", []),
             )
