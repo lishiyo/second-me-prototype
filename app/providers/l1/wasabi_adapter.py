@@ -838,7 +838,7 @@ class WasabiStorageAdapter:
             logger.error(f"Error storing shade data: {e}")
             return False
     
-    def store_chunk_topics(self, user_id: str, chunk_topics: Dict, version: int) -> bool:
+    def store_chunk_topics(self, user_id: str, chunk_topics: Dict, version: int) -> str:
         """
         Store chunk topics data with version information.
         
@@ -848,7 +848,7 @@ class WasabiStorageAdapter:
             version: The L1 version number
             
         Returns:
-            True if successful, False otherwise
+            S3 path where the chunk topics were stored
         """
         # Add version information
         data = {
@@ -863,7 +863,7 @@ class WasabiStorageAdapter:
         
         try:
             self.store_json(object_key, data)
-            return True
+            return object_key
         except Exception as e:
             logger.error(f"Error storing chunk topics data: {e}")
-            return False 
+            raise 

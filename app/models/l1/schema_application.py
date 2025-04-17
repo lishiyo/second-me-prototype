@@ -95,7 +95,11 @@ def apply_weaviate_schema(vector_db: VectorDB = None) -> bool:
             collection_name = schema["name"]
             
             if collection_name in existing_collections:
-                logger.info(f"Collection {collection_name} already exists, skipping")
+                logger.info(f"Collection {collection_name} already exists, checking properties")
+                
+                # Check if the collection needs the s3_path property added
+                if collection_name == "TenantCluster":
+                    add_s3_path_to_tenant_cluster(vector_db)
                 continue
             
             try:
@@ -113,17 +117,55 @@ def apply_weaviate_schema(vector_db: VectorDB = None) -> bool:
                 success = False
         
         return success
-    
     except Exception as e:
-        logger.error(f"Error connecting to Weaviate: {e}")
+        logger.error(f"Error applying Weaviate schema: {e}")
         return False
     finally:
-        # Close the client if we created it locally
         if created_locally and vector_db is not None:
-            try:
-                vector_db.client.close()
-            except Exception as e:
-                logger.error(f"Error closing Weaviate client: {e}")
+            # Close resources if applicable
+            pass
+
+def add_s3_path_to_tenant_cluster(vector_db: VectorDB) -> bool:
+    """
+    Add the s3_path property to the TenantCluster collection if it doesn't already exist.
+    
+    Args:
+        vector_db: VectorDB instance.
+        
+    Returns:
+        bool: True if successful, False otherwise.
+    """
+    try:
+        # Get the TenantCluster collection
+        tenant_cluster = vector_db.client.collections.get("TenantCluster")
+        
+        # Check if s3_path property exists
+        properties = tenant_cluster.config.get().properties
+        property_names = [prop.name for prop in properties]
+        
+        if "s3_path" not in property_names:
+            logger.info("Adding s3_path property to TenantCluster collection")
+            
+            # Add the s3_path property
+            from weaviate.classes.config import Property, DataType
+            tenant_cluster.config.add_property(
+                Property(
+                    name="s3_path",
+                    description="Path to full content in Wasabi S3",
+                    data_type=DataType.TEXT,
+                    indexing={"filterable": True, "searchable": False}
+                )
+            )
+            
+            logger.info("Successfully added s3_path property to TenantCluster collection")
+            return True
+        else:
+            logger.info("s3_path property already exists in TenantCluster collection")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error adding s3_path property to TenantCluster collection: {e}")
+        return False
 
 def apply_all_schemas() -> bool:
     """

@@ -96,6 +96,12 @@ TENANT_CLUSTER_SCHEMA = {
             description="Creation timestamp",
             data_type=DataType.DATE,
             indexing={"filterable": True, "searchable": False}
+        ),
+        Property(
+            name="s3_path",
+            description="Path to full content in Wasabi S3",
+            data_type=DataType.TEXT,
+            indexing={"filterable": True, "searchable": False}
         )
     ]
 }

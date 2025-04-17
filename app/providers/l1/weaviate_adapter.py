@@ -20,10 +20,10 @@ from app.providers.vector_db import VectorDB
 from weaviate.collections.classes.filters import Filter
             
 # Constants
-TOPICS_COLLECTION = "TenantTopic"
+TOPICS_COLLECTION = "TenantTopic" # Unused
 CLUSTERS_COLLECTION = "TenantCluster"
-SHADES_COLLECTION = "TenantShade"
-BIOS_COLLECTION = "TenantBiography"
+SHADES_COLLECTION = "TenantShade" # Unused
+BIOS_COLLECTION = "TenantBiography" #Unused
 
 logger = logging.getLogger(__name__)
 
@@ -69,42 +69,42 @@ class WeaviateAdapter:
         """
         return str(generate_uuid5(f"{entity_type}_{user_id}_{entity_id}"))
     
-    def add_topic(self, user_id: str, topic: Topic) -> str:
-        """
-        Add a Topic domain model to Weaviate.
+    # def add_topic(self, user_id: str, topic: Topic) -> str:
+    #     """
+    #     Add a Topic domain model to Weaviate.
         
-        Args:
-            user_id: User ID.
-            topic: Topic domain model.
+    #     Args:
+    #         user_id: User ID.
+    #         topic: Topic domain model.
             
-        Returns:
-            Weaviate UUID of the created object.
-        """
-        self._validate_model(topic)
+    #     Returns:
+    #         Weaviate UUID of the created object.
+    #     """
+    #     self._validate_model(topic)
         
-        object_uuid = self._generate_uuid("topic", user_id, topic.id)
+    #     object_uuid = self._generate_uuid("topic", user_id, topic.id)
         
-        properties = {
-            "user_id": user_id,
-            "topic_id": topic.id,
-            "name": topic.name,
-            "summary": topic.summary or ""
-        }
+    #     properties = {
+    #         "user_id": user_id,
+    #         "topic_id": topic.id,
+    #         "name": topic.name,
+    #         "summary": topic.summary or ""
+    #     }
         
-        if topic.metadata:
-            properties["metadata"] = json.dumps(topic.metadata)
+    #     if topic.metadata:
+    #         properties["metadata"] = json.dumps(topic.metadata)
         
-        try:
-            self.client.data_object.create(
-                properties,
-                TOPICS_COLLECTION,
-                object_uuid,
-                vector=topic.embedding or []
-            )
-            return object_uuid
-        except Exception as e:
-            logger.error(f"Error adding topic to Weaviate: {e}")
-            raise
+    #     try:
+    #         self.client.data_object.create(
+    #             properties,
+    #             TOPICS_COLLECTION,
+    #             object_uuid,
+    #             vector=topic.embedding or []
+    #         )
+    #         return object_uuid
+    #     except Exception as e:
+    #         logger.error(f"Error adding topic to Weaviate: {e}")
+    #         raise
     
     def add_cluster(self, user_id: str, cluster: Cluster) -> str:
         """
@@ -126,7 +126,8 @@ class WeaviateAdapter:
             "cluster_id": cluster.id,
             "topic_id": cluster.topic_id or "",
             "name": cluster.name or "",
-            "summary": cluster.summary or ""
+            "summary": cluster.summary or "",
+            "s3_path": cluster.s3_path or ""
         }
         
         if cluster.metadata:
@@ -144,91 +145,91 @@ class WeaviateAdapter:
             logger.error(f"Error adding cluster to Weaviate: {e}")
             raise
     
-    def add_shade(self, user_id: str, shade: L1Shade) -> str:
-        """
-        Add a L1Shade domain model to Weaviate.
+    # def add_shade(self, user_id: str, shade: L1Shade) -> str:
+    #     """
+    #     Add a L1Shade domain model to Weaviate.
         
-        Args:
-            user_id: User ID.
-            shade: L1Shade domain model.
+    #     Args:
+    #         user_id: User ID.
+    #         shade: L1Shade domain model.
             
-        Returns:
-            Weaviate UUID of the created object.
-        """
-        self._validate_model(shade)
+    #     Returns:
+    #         Weaviate UUID of the created object.
+    #     """
+    #     self._validate_model(shade)
         
-        object_uuid = self._generate_uuid("shade", user_id, shade.id)
+    #     object_uuid = self._generate_uuid("shade", user_id, shade.id)
         
-        properties = {
-            "user_id": user_id,
-            "shade_id": shade.id,
-            "name": shade.name,
-            "summary": shade.summary or "",
-            "confidence": shade.confidence
-        }
+    #     properties = {
+    #         "user_id": user_id,
+    #         "shade_id": shade.id,
+    #         "name": shade.name,
+    #         "summary": shade.summary or "",
+    #         "confidence": shade.confidence
+    #     }
         
-        if hasattr(shade, 'metadata') and shade.metadata:
-            properties["metadata"] = json.dumps(shade.metadata)
+    #     if hasattr(shade, 'metadata') and shade.metadata:
+    #         properties["metadata"] = json.dumps(shade.metadata)
         
-        try:
-            # Get embedding from shade or use empty list
-            embedding = getattr(shade, 'embedding', None) or []
+    #     try:
+    #         # Get embedding from shade or use empty list
+    #         embedding = getattr(shade, 'embedding', None) or []
             
-            self.client.data_object.create(
-                properties,
-                SHADES_COLLECTION,
-                object_uuid,
-                vector=embedding
-            )
-            return object_uuid
-        except Exception as e:
-            logger.error(f"Error adding shade to Weaviate: {e}")
-            raise
+    #         self.client.data_object.create(
+    #             properties,
+    #             SHADES_COLLECTION,
+    #             object_uuid,
+    #             vector=embedding
+    #         )
+    #         return object_uuid
+    #     except Exception as e:
+    #         logger.error(f"Error adding shade to Weaviate: {e}")
+    #         raise
     
-    def add_biography(self, user_id: str, bio_id: str, bio: Bio, version: int) -> str:
-        """
-        Add a Bio domain model to Weaviate.
+    # def add_biography(self, user_id: str, bio_id: str, bio: Bio, version: int) -> str:
+    #     """
+    #     Add a Bio domain model to Weaviate.
         
-        Args:
-            user_id: User ID.
-            bio_id: Biography ID.
-            bio: Bio domain model.
-            version: Version number.
+    #     Args:
+    #         user_id: User ID.
+    #         bio_id: Biography ID.
+    #         bio: Bio domain model.
+    #         version: Version number.
             
-        Returns:
-            Weaviate UUID of the created object.
-        """
-        self._validate_model(bio)
+    #     Returns:
+    #         Weaviate UUID of the created object.
+    #     """
+    #     self._validate_model(bio)
         
-        object_uuid = self._generate_uuid("bio", user_id, bio_id)
+    #     object_uuid = self._generate_uuid("bio", user_id, bio_id)
         
-        # Prefer third-person view for vector embedding
-        content = bio.content_third_view if hasattr(bio, 'content_third_view') else bio.content
+    #     # Prefer third-person view for vector embedding
+    #     content = bio.content_third_view if hasattr(bio, 'content_third_view') else bio.content
         
-        properties = {
-            "user_id": user_id,
-            "bio_id": bio_id,
-            "content": content,
-            "version": version
-        }
+    #     properties = {
+    #         "user_id": user_id,
+    #         "bio_id": bio_id,
+    #         "content": content,
+    #         "version": version
+    #     }
         
-        # Ensure we have an embedding
-        embedding = getattr(bio, 'embedding', None) or []
+    #     # Ensure we have an embedding
+    #     embedding = getattr(bio, 'embedding', None) or []
         
-        if hasattr(bio, 'metadata') and bio.metadata:
-            properties["metadata"] = json.dumps(bio.metadata)
+    #     if hasattr(bio, 'metadata') and bio.metadata:
+    #         properties["metadata"] = json.dumps(bio.metadata)
         
-        try:
-            self.client.data_object.create(
-                properties,
-                BIOS_COLLECTION,
-                object_uuid,
-                vector=embedding
-            )
-            return object_uuid
-        except Exception as e:
-            logger.error(f"Error adding biography to Weaviate: {e}")
-            raise
+    #     try:
+    #         self.client.data_object.create(
+    #             properties,
+    #             BIOS_COLLECTION,
+    #             object_uuid,
+    #             vector=embedding
+    #         )
+    #         return object_uuid
+    #     except Exception as e:
+    #         logger.error(f"Error adding biography to Weaviate: {e}")
+    #         raise
     
     def search_topics(self, user_id: str, query_embedding: List[float], 
                      limit: int = 10) -> List[Dict[str, Any]]:
@@ -325,7 +326,7 @@ class WeaviateAdapter:
             
             result = (
                 self.client.query
-                .get(CLUSTERS_COLLECTION, ["user_id", "cluster_id", "topic_id", "name", "summary", "metadata"])
+                .get(CLUSTERS_COLLECTION, ["user_id", "cluster_id", "topic_id", "name", "summary", "metadata", "s3_path"])
                 .with_where(where_filter)
                 .with_near_vector({
                     "vector": query_embedding,
@@ -345,6 +346,7 @@ class WeaviateAdapter:
                     "topic_id": obj.get("topic_id"),
                     "name": obj.get("name"),
                     "summary": obj.get("summary"),
+                    "s3_path": obj.get("s3_path"),
                     "certainty": obj.get("_additional", {}).get("certainty")
                 }
                 
@@ -658,48 +660,6 @@ class WeaviateAdapter:
             schema = {
                 "classes": [
                     {
-                        "class": TOPICS_COLLECTION,
-                        "description": "L1 Topics",
-                        "vectorizer": "none",  # Use custom vectors
-                        "properties": [
-                            {
-                                "name": "user_id",
-                                "dataType": ["string"],
-                                "description": "User ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "topic_id",
-                                "dataType": ["string"],
-                                "description": "Topic ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "name",
-                                "dataType": ["string"],
-                                "description": "Topic name",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "summary",
-                                "dataType": ["text"],
-                                "description": "Topic summary",
-                                "indexFilterable": False,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "metadata",
-                                "dataType": ["string"],
-                                "description": "JSON-encoded metadata",
-                                "indexFilterable": False,
-                                "indexSearchable": False
-                            }
-                        ]
-                    },
-                    {
                         "class": CLUSTERS_COLLECTION,
                         "description": "L1 Clusters",
                         "vectorizer": "none",  # Use custom vectors
@@ -745,12 +705,61 @@ class WeaviateAdapter:
                                 "description": "JSON-encoded metadata",
                                 "indexFilterable": False,
                                 "indexSearchable": False
+                            },
+                            {
+                                "name": "s3_path",
+                                "dataType": ["string"],
+                                "description": "Path to full content in Wasabi S3",
+                                "indexFilterable": True,
+                                "indexSearchable": False
                             }
                         ]
                     },
                     {
-                        "class": SHADES_COLLECTION,
-                        "description": "L1 Shades",
+                        "class": TOPICS_COLLECTION,  # UNUSED - Schema kept for compatibility
+                        "description": "L1 Topics - UNUSED - Only defined for schema compatibility",
+                        "vectorizer": "none",  # Use custom vectors
+                        "properties": [
+                            {
+                                "name": "user_id",
+                                "dataType": ["string"],
+                                "description": "User ID",
+                                "indexFilterable": True,
+                                "indexSearchable": True
+                            },
+                            {
+                                "name": "topic_id",
+                                "dataType": ["string"],
+                                "description": "Topic ID",
+                                "indexFilterable": True,
+                                "indexSearchable": True
+                            },
+                            {
+                                "name": "name",
+                                "dataType": ["string"],
+                                "description": "Topic name",
+                                "indexFilterable": True,
+                                "indexSearchable": True
+                            },
+                            {
+                                "name": "summary",
+                                "dataType": ["text"],
+                                "description": "Topic summary",
+                                "indexFilterable": False,
+                                "indexSearchable": True
+                            },
+                            {
+                                "name": "metadata",
+                                "dataType": ["string"],
+                                "description": "JSON-encoded metadata",
+                                "indexFilterable": False,
+                                "indexSearchable": False
+                            }
+                        ]
+                    },
+                    {
+                        "class": SHADES_COLLECTION,  # UNUSED - Schema kept for compatibility
+                        "description": "L1 Shades - UNUSED - Only defined for schema compatibility",
                         "vectorizer": "none",  # Use custom vectors
                         "properties": [
                             {
@@ -798,8 +807,8 @@ class WeaviateAdapter:
                         ]
                     },
                     {
-                        "class": BIOS_COLLECTION,
-                        "description": "L1 Biographies",
+                        "class": BIOS_COLLECTION,  # UNUSED - Schema kept for compatibility
+                        "description": "L1 Biographies - UNUSED - Only defined for schema compatibility",
                         "vectorizer": "none",  # Use custom vectors
                         "properties": [
                             {
@@ -958,7 +967,8 @@ class WeaviateAdapter:
                 topic_id=cluster_dict.get("topic_id"),
                 name=cluster_dict.get("name", ""),
                 summary=cluster_dict.get("summary", ""),
-                center_embedding=cluster_dict.get("embedding", [])
+                center_embedding=cluster_dict.get("embedding", []),
+                s3_path=cluster_dict.get("s3_path", "")
             )
             
             # Add metadata if available

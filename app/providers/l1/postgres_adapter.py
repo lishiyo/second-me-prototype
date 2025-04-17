@@ -1000,7 +1000,7 @@ class PostgresAdapter:
         finally:
             self.close_db_session(session)
     
-    def store_chunk_topics(self, user_id: str, chunk_topics: Dict[str, Dict], version: int) -> bool:
+    def store_chunk_topics(self, user_id: str, chunk_topics: Dict[str, Dict], version: int, s3_path: str) -> bool:
         """
         Store chunk topics with version information.
         
@@ -1008,6 +1008,7 @@ class PostgresAdapter:
             user_id: The user ID
             chunk_topics: Dictionary mapping chunk IDs to topic data
             version: The L1 version number
+            s3_path: The S3 path to the single file containing all chunk topics
             
         Returns:
             True if successful, False otherwise
@@ -1015,7 +1016,11 @@ class PostgresAdapter:
         session = self.get_db_session()
         try:
             # Store in a custom JSON table or another appropriate storage structure
-            # For now, we'll use the L1Topic table with a special prefix to differentiate
+            # Use a single common S3 path for all chunk topics in this version
+            if not s3_path:
+                object_id = f"topics_v{version}"
+                s3_path = f"l1/topics/{user_id}/{object_id}.json"
+                
             for chunk_id, topic_data in chunk_topics.items():
                 topic_id = f"chunk_{chunk_id}"
                 topic_name = topic_data.get("topic", "Unknown Topic")
@@ -1032,15 +1037,15 @@ class PostgresAdapter:
                     existing_topic.summary = summary
                     existing_topic.updated_at = datetime.utcnow()
                     existing_topic.version = version  # Update version
+                    existing_topic.s3_path = s3_path  # Use the common S3 path
                 else:
-                    # Create a new topic record
-                    s3_path = f"l1/chunk_topics/{user_id}/{topic_id}.json"
+                    # Create a new topic record with the common S3 path
                     topic = L1Topic(
                         id=topic_id,
                         user_id=user_id,
                         name=topic_name,
                         summary=summary,
-                        s3_path=s3_path,
+                        s3_path=s3_path,  # Use the common S3 path
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow(),
                         version=version  # Set version
@@ -1057,7 +1062,7 @@ class PostgresAdapter:
             self.close_db_session(session)
     
     def store_shade(self, user_id: str, shade_id: str, name: str, summary: str,
-                   confidence: float, source_clusters: List[str], version: int) -> bool:
+                   confidence: float, source_clusters: List[str], version: int, s3_path: str) -> bool:
         """
         Store shade metadata with version information.
         
@@ -1069,7 +1074,7 @@ class PostgresAdapter:
             confidence: The confidence score
             source_clusters: List of source cluster IDs
             version: The L1 version number
-            
+            s3_path: The S3 path to the single shade shade
         Returns:
             True if successful, False otherwise
         """
@@ -1094,7 +1099,9 @@ class PostgresAdapter:
                 ).delete()
             else:
                 # Create a new shade record
-                s3_path = f"l1/shades/{user_id}/{shade_id}.json"
+                if not s3_path:
+                    s3_path = f"l1/shades/{user_id}/{shade_id}.json"
+                
                 shade = L1Shade(
                     id=shade_id,
                     user_id=user_id,

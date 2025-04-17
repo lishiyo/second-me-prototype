@@ -347,7 +347,6 @@ class L1Manager:
                         str(m.get("memoryId")) for m in cluster.get("memoryList", [])
                     ]
                     
-                    # Store in Weaviate (vector DB)
                     from app.models.l1.topic import Cluster
                     cluster_model = Cluster(
                         id=cluster_id,
@@ -357,12 +356,20 @@ class L1Manager:
                         document_ids=document_ids # Add document_ids
                     )
 
+                    # Store in Wasabi (object storage)
+                    cluster_s3_path =self.wasabi_adapter.store_cluster(
+                        user_id=user_id,
+                        cluster=cluster_model
+                    )
+                    logger.info(f"Stored cluster in Wasabi at {cluster_s3_path}")
+
+                    # Store in Weaviate (vector DB), cluster_model already has the s3 path
                     self.weaviate_adapter.add_cluster(
                         user_id=user_id,
                         cluster=cluster_model
                     )
                     
-                    # Store in PostgreSQL (metadata DB)
+                    # Store in PostgreSQL (metadata DB), cluster_model already has the s3 path
                     self.postgres_adapter.store_cluster(
                         user_id=user_id,
                         cluster_id=cluster_id,
@@ -371,12 +378,19 @@ class L1Manager:
                         version=new_version
                     )
             
-            # 3. Store chunk topics in PostgreSQL
+            # 3. Store chunk topics in PostgreSQL and Wasabi
             if chunk_topics:
-                self.postgres_adapter.store_chunk_topics(
+                chunk_topics_s3_path = self.wasabi_adapter.store_chunk_topics(
                     user_id=user_id,
                     chunk_topics=chunk_topics,
                     version=new_version
+                )
+                logger.info(f"Stored chunk topics in Wasabi at {chunk_topics_s3_path}")
+                self.postgres_adapter.store_chunk_topics(
+                    user_id=user_id,
+                    chunk_topics=chunk_topics,
+                    version=new_version,
+                    s3_path=chunk_topics_s3_path
                 )
             
             # 4. Store shades in PostgreSQL and Wasabi
@@ -384,12 +398,13 @@ class L1Manager:
                 for shade in shades:
                     shade_id = shade.get("id")
                     # Store in Wasabi (object storage)
-                    self.wasabi_adapter.store_shade(
+                    shade_s3_path = self.wasabi_adapter.store_shade(
                         user_id=user_id,
                         shade_id=shade_id,
                         shade_data=shade,
                         version=new_version
                     )
+                    logger.info(f"Stored shade in Wasabi at {shade_s3_path}")
                     
                     # Store metadata in PostgreSQL
                     self.postgres_adapter.store_shade(
@@ -405,7 +420,7 @@ class L1Manager:
             # 5. Store biography in PostgreSQL and Wasabi
             # Store the global biography in Wasabi (full content)
             bio_id = f"global_{new_version}"
-            self.wasabi_adapter.store_biography(
+            bio_s3_path = self.wasabi_adapter.store_biography(
                 user_id=user_id,
                 bio_id=bio_id,
                 bio_data={
@@ -418,6 +433,7 @@ class L1Manager:
                 },
                 version=new_version
             )
+            logger.info(f"Stored biography in Wasabi at {bio_s3_path}")
             
             # Store global biography metadata in PostgreSQL
             self.postgres_adapter.store_global_biography(

@@ -531,9 +531,10 @@ Domain Timelines:
         }
         
         # Only add s3_path if the class accepts it
-        import inspect
-        if 's3_path' in inspect.signature(L1Shade.__init__).parameters:
-            shade_kwargs["s3_path"] = s3_path
+        # The s3 path is not added here because we want to store it separately, this should be updated later
+        # import inspect
+        # if 's3_path' in inspect.signature(L1Shade.__init__).parameters:
+        #     shade_kwargs["s3_path"] = s3_path
             
         # Create shade object
         shade = L1Shade(**shade_kwargs)
