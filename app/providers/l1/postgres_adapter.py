@@ -6,7 +6,7 @@ for L1 data including topics, clusters, shades, and biographies.
 """
 import logging
 from typing import List, Dict, Any, Optional, Tuple, Union
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy import text, select, and_
 from sqlalchemy.orm import Session
 import json
@@ -67,7 +67,7 @@ class PostgresAdapter:
                 user_id=user_id,
                 version=version,
                 status="processing",
-                started_at=datetime.utcnow()
+                started_at=datetime.now(UTC)
             )
             session.add(version_record)
             session.commit()
@@ -108,10 +108,10 @@ class PostgresAdapter:
             
             version_record.status = status
             if status == "completed":
-                version_record.completed_at = datetime.utcnow()
+                version_record.completed_at = datetime.now(UTC)
             elif status == "failed":
                 version_record.error = error
-                version_record.completed_at = datetime.utcnow()
+                version_record.completed_at = datetime.now(UTC)
             
             session.commit()
             return True
@@ -166,8 +166,8 @@ class PostgresAdapter:
                 name=name,
                 summary=summary,
                 s3_path=s3_path,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC)
             )
             session.add(topic)
             session.commit()
@@ -245,8 +245,8 @@ class PostgresAdapter:
     #             summary=summary,
     #             document_count=document_count,
     #             s3_path=s3_path,
-    #             created_at=datetime.utcnow(),
-    #             updated_at=datetime.utcnow()
+    #             created_at=datetime.now(UTC),
+    #             updated_at=datetime.now(UTC)
     #         )
     #         session.add(cluster)
     #         session.commit()
@@ -380,8 +380,8 @@ class PostgresAdapter:
     #             summary=summary,
     #             confidence=confidence,
     #             s3_path=s3_path,
-    #             created_at=datetime.utcnow(),
-    #             updated_at=datetime.utcnow()
+    #             created_at=datetime.now(UTC),
+    #             updated_at=datetime.now(UTC)
     #         )
     #         session.add(shade)
     #         session.commit()
@@ -512,8 +512,8 @@ class PostgresAdapter:
     #             summary_third_view=summary_third_view,
     #             confidence=confidence,
     #             version=version,
-    #             created_at=datetime.utcnow(),
-    #             updated_at=datetime.utcnow()
+    #             created_at=datetime.now(UTC),
+    #             updated_at=datetime.now(UTC)
     #         )
     #         session.add(bio)
     #         session.commit()
@@ -548,7 +548,7 @@ class PostgresAdapter:
                 content_third_view=content_third_view,
                 summary=summary,
                 summary_third_view=summary_third_view,
-                created_at=datetime.utcnow()
+                created_at=datetime.now(UTC)
             )
             session.add(bio)
             session.commit()
@@ -961,7 +961,7 @@ class PostgresAdapter:
                 existing_cluster.user_id = user_id
                 existing_cluster.name = name
                 existing_cluster.document_count = len(document_ids)
-                existing_cluster.updated_at = datetime.utcnow()
+                existing_cluster.updated_at = datetime.now(UTC)
                 existing_cluster.version = version  # Update version
                 
                 # Delete existing document associations to recreate them
@@ -977,8 +977,8 @@ class PostgresAdapter:
                     name=name,
                     document_count=len(document_ids),
                     s3_path=s3_path,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
                     version=version  # Set version
                 )
                 session.add(cluster)
@@ -1038,7 +1038,7 @@ class PostgresAdapter:
                     # Update existing topic
                     existing_topic.name = topic_name
                     existing_topic.summary = summary
-                    existing_topic.updated_at = datetime.utcnow()
+                    existing_topic.updated_at = datetime.now(UTC)
                     existing_topic.version = version  # Update version
                     existing_topic.s3_path = s3_path  # Use the common S3 path
                 else:
@@ -1049,8 +1049,8 @@ class PostgresAdapter:
                         name=topic_name,
                         summary=summary,
                         s3_path=s3_path,  # Use the common S3 path
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow(),
+                        created_at=datetime.now(UTC),
+                        updated_at=datetime.now(UTC),
                         version=version  # Set version
                     )
                     session.add(topic)
@@ -1093,7 +1093,7 @@ class PostgresAdapter:
                 existing_shade.name = name
                 existing_shade.summary = summary
                 existing_shade.confidence = confidence
-                existing_shade.updated_at = datetime.utcnow()
+                existing_shade.updated_at = datetime.now(UTC)
                 existing_shade.version = version  # Update version
                 
                 # Delete existing cluster associations to recreate them
@@ -1112,8 +1112,8 @@ class PostgresAdapter:
                     summary=summary,
                     confidence=confidence,
                     s3_path=s3_path,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
                     version=version  # Set version
                 )
                 session.add(shade)
@@ -1167,7 +1167,7 @@ class PostgresAdapter:
                 existing_bio.content_third_view = content_third_view
                 existing_bio.summary = summary
                 existing_bio.summary_third_view = summary_third_view
-                existing_bio.updated_at = datetime.utcnow()
+                existing_bio.updated_at = datetime.now(UTC)
             else:
                 # Create a new biography record
                 bio = L1GlobalBiography(
@@ -1178,8 +1178,8 @@ class PostgresAdapter:
                     summary_third_view=summary_third_view,
                     confidence=0.8,  # Default confidence
                     version=version,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC)
                 )
                 session.add(bio)
             

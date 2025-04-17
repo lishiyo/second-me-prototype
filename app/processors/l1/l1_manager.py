@@ -413,13 +413,20 @@ class L1Manager:
                 for shade in shades:
                     shade_id = shade.get("id")
                     # Store in Wasabi (object storage)
-                    shade_s3_path = self.wasabi_adapter.store_shade(
+                    success = self.wasabi_adapter.store_shade_data(
                         user_id=user_id,
                         shade_id=shade_id,
                         shade_data=shade,
                         version=new_version
                     )
-                    logger.info(f"Stored shade in Wasabi at {shade_s3_path}")
+                    
+                    # Generate the standard S3 path for PostgreSQL reference
+                    shade_s3_path = f"l1/shades/{user_id}/{shade_id}_v{new_version}.json"
+                    
+                    if success:
+                        logger.info(f"Stored shade in Wasabi at {shade_s3_path}")
+                    else:
+                        logger.warning(f"Failed to store shade {shade_id} in Wasabi")
                     
                     # Store metadata in PostgreSQL
                     self.postgres_adapter.store_shade(
