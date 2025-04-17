@@ -190,7 +190,13 @@ def main():
         )
         
         # Get data directory path from arguments
-        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', args.data_dir))
+        if os.path.isabs(args.data_dir):
+            # Use the absolute path directly if provided
+            data_dir = args.data_dir
+        else:
+            # Otherwise, treat it as relative to the project root
+            data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', args.data_dir))
+        
         logger.info(f"Scanning directory: {data_dir}")
         
         # Get all files in the data directory
