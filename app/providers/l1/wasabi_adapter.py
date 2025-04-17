@@ -796,7 +796,7 @@ class WasabiStorageAdapter:
 
     # New storage methods with version support
     
-    def store_biography(self, user_id: str, bio_type: str, bio_data: Dict, version: int) -> bool:
+    def store_biography(self, user_id: str, bio_type: str, bio_data: Dict, version: int) -> str:
         """
         Store GLOBAL biography data with version information.
         
@@ -807,7 +807,7 @@ class WasabiStorageAdapter:
             version: The L1 version number
             
         Returns:
-            True if successful, False otherwise
+            S3 path where the biography was stored
         """
         # Ensure the bio_data has version information
         bio_data = bio_data.copy()  # Make a copy to avoid modifying the original
@@ -820,10 +820,10 @@ class WasabiStorageAdapter:
         
         try:
             self.store_json(object_key, bio_data)
-            return True
+            return object_key
         except Exception as e:
             logger.error(f"Error storing biography data: {e}")
-            return False
+            return None
     
     def store_cluster_data(self, user_id: str, cluster_id: str, cluster_data: Dict, version: int) -> bool:
         """

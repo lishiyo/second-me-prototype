@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlalchemy import text, select, and_
 from sqlalchemy.orm import Session
 import json
+import numpy as np
 
 from app.providers.rel_db import RelationalDB, Document
 from app.models.l1.db_models import (
@@ -1002,16 +1003,17 @@ class PostgresAdapter:
     
     def store_chunk_topics(self, user_id: str, chunk_topics: Dict[str, Dict], version: int, s3_path: str) -> bool:
         """
-        Store chunk topics with version information.
-        
+        Store chunk topics metadata in PostgreSQL.
+
         Args:
-            user_id: The user ID
-            chunk_topics: Dictionary mapping chunk IDs to topic data
-            version: The L1 version number
-            s3_path: The S3 path to the single file containing all chunk topics
-            
+            user_id: The user ID.
+            chunk_topics: Dictionary mapping chunk_id to topic info 
+                          (e.g., {"topic_id": ..., "score": ...}).
+            version: The L1 version number.
+            s3_path: S3 path where the full chunk topics data is stored.
+
         Returns:
-            True if successful, False otherwise
+            True if successful, False otherwise.
         """
         session = self.get_db_session()
         try:
@@ -1024,7 +1026,8 @@ class PostgresAdapter:
             for chunk_id, topic_data in chunk_topics.items():
                 topic_id = f"chunk_{chunk_id}"
                 topic_name = topic_data.get("topic", "Unknown Topic")
-                summary = json.dumps(topic_data)  # Store the full topic data as JSON string
+                serialized_topic_data = self._make_json_serializable(topic_data)
+                summary = json.dumps(serialized_topic_data)  # Store the full topic data as JSON string
                 
                 # Check if topic already exists
                 existing_topic = session.query(L1Topic).filter(
@@ -1187,4 +1190,34 @@ class PostgresAdapter:
             logger.error(f"Error storing global biography: {e}")
             return False
         finally:
-            self.close_db_session(session) 
+            self.close_db_session(session)
+    
+    # Helper for JSON serialization
+    def _make_json_serializable(self, obj):
+        """
+        Convert objects to JSON serializable types recursively.
+        Specifically handles numpy arrays and other non-serializable types.
+        
+        Args:
+            obj: Object to convert
+            
+        Returns:
+            JSON serializable version of the object
+        """
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, dict):
+            return {k: self._make_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list) or isinstance(obj, tuple):
+            return [self._make_json_serializable(item) for item in obj]
+        elif hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
+            # Handle objects with to_dict() method
+            return self._make_json_serializable(obj.to_dict())
+        else:
+            return obj 

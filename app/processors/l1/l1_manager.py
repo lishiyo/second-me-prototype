@@ -435,10 +435,9 @@ class L1Manager:
             
             # 5. Store biography in PostgreSQL and Wasabi
             # Store the global biography in Wasabi (full content)
-            bio_id = f"global_{new_version}"
             bio_s3_path = self.wasabi_adapter.store_biography(
                 user_id=user_id,
-                bio_id=bio_id,
+                bio_type="global",  # Pass the type of biography
                 bio_data={
                     "content_first_view": bio.content_first_view,
                     "content_second_view": bio.content_second_view,
