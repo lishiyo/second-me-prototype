@@ -34,6 +34,83 @@ The pipeline processes documents through these steps:
 - Generates embeddings for each chunk
 - Stores chunks in Wasabi and their embeddings in Weaviate vector database
 
+## L1 Knowledge Synthesis Layer
+
+The L1 layer synthesizes higher-level knowledge from processed L0 documents:
+
+1. **L1Manager** (`app/processors/l1/l1_manager.py`): Orchestrates the entire L1 generation process.
+
+2. **TopicsGenerator** (`app/processors/l1/topics_generator.py`): Identifies topics and creates clusters from document embeddings.
+
+3. **ShadeGenerator** (`app/processors/l1/shade_generator.py`): Generates knowledge "shades" representing key aspects of the user's knowledge.
+
+4. **ShadeMerger** (`app/processors/l1/shade_merger.py`): Merges similar shades to create coherent knowledge areas.
+
+5. **BiographyGenerator** (`app/processors/l1/biography_generator.py`): Creates user biographies from processed shades and clusters.
+
+The L1 layer produces:
+- Topics/clusters representing areas of interest and focus
+- Knowledge shades capturing key aspects of the user's knowledge
+- User biographies in multiple perspectives (first, second, and third person)
+
+## Running the Full Pipeline
+
+### Step 1: Process Documents with L0 Pipeline
+
+To process all documents in the data directory:
+
+```bash
+# Create a 'data' directory in the project root and add your documents
+mkdir -p data
+# Copy your documents to the data directory
+cp /path/to/your/documents/* data/
+
+# Run the L0 processing script
+python scripts/process_all_data.py
+```
+
+Options:
+- `--skip-existing`: Skip files that have already been processed
+- `--data-dir PATH`: Specify a different directory for your data (default: 'data')
+
+### Step 2: Generate L1 Knowledge
+
+After processing documents with the L0 pipeline, run the L1 generation process:
+
+```bash
+# Run the L1 manager to generate knowledge
+python scripts/run_l1_manager_methods.py
+```
+
+This will:
+1. Extract notes and memories from L0 data
+2. Generate topics and clusters
+3. Create knowledge shades
+4. Merge similar shades
+5. Generate a user biography
+6. Store all L1 data in the databases
+
+### Step 3: Examine the Generated Biography
+
+The generated biography and other L1 artifacts are stored in:
+
+1. **PostgreSQL**: Metadata about the L1 version, clusters, shades, and biography
+2. **Wasabi**: Full content of the L1 artifacts in JSON format
+3. **Local JSON files**: During development, results are also saved to `result_data/l1/`
+
+To examine the biography:
+
+```bash
+# View the generated biography
+cat result_data/l1/global_v*.json | jq
+```
+
+The biography contains:
+- `content_third_view`: Detailed biography in third person
+- `content_second_view`: Detailed biography in second person (for chatbot)
+- `content_first_view`: Detailed biography in first person
+- `summary_third_view`, `summary_second_view`, `summary_first_view`: Concise versions
+
 ## Environment Setup
 
 Copy the `.env.example` file to `.env` and fill in the required values:
@@ -112,14 +189,26 @@ second-me-prototype/
 │   │   │   ├── embedding_generator.py # Embedding generation
 │   │   │   ├── models.py      # Data models
 │   │   │   └── utils.py       # Utility functions
+│   │   ├── l1/                # L1 processing (knowledge synthesis)
+│   │   │   ├── l1_manager.py  # L1 pipeline orchestration
+│   │   │   ├── topics_generator.py # Topic clustering
+│   │   │   ├── shade_generator.py # Knowledge shade generation
+│   │   │   ├── shade_merger.py # Shade merging
+│   │   │   ├── biography_generator.py # Biography generation
+│   │   │   └── models/        # L1 data models
 │   │   └── __init__.py
 │   └── api/                   # API routes (to be implemented)
 ├── scripts/                   # Utility scripts
-│   └── test_l0_pipeline.py    # Script for testing L0 pipeline
+│   ├── test_l0_pipeline.py    # Script for testing L0 pipeline
+│   ├── process_all_data.py    # Script for processing all documents
+│   └── run_l1_manager_methods.py # Script for generating L1 knowledge
 ├── tests/                     # Test scripts
 │   ├── test_adapters.py       # Adapter tests
 │   └── processors/            # Processor tests
-│       └── l0/                # L0 pipeline tests
+│       ├── l0/                # L0 pipeline tests
+│       └── l1/                # L1 pipeline tests
+├── result_data/               # Development result data
+│   └── l1/                    # L1 generation results
 ├── design_docs/               # Design documentation
 │   ├── v0_architecture.md     # System architecture
 │   └── v0_L0_instructions.md  # L0 implementation instructions

@@ -200,9 +200,11 @@ class Bio:
         Returns:
             Complete formatted content
         """
-        interests_preference_field = (
-            "\n### User's Interests and Preferences ###\n"
-        )
+        # Use appropriate header based on perspective
+        if not second_view:
+            interests_preference_field = "\n### User's Interests and Preferences ###\n"
+        else:
+            interests_preference_field = "\n### Your Interests and Preferences ###\n"
         
         # Add preview of each shade
         for shade in self.shades_list:
