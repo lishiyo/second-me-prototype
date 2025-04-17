@@ -5,8 +5,8 @@ from sqlalchemy.orm import declarative_base
 
 from datetime import datetime, timezone
 import uuid
-
-Base = declarative_base()
+# Import Document and Base from rel_db to ensure we use the same metadata
+from app.providers.rel_db import Document, Base
 
 def generate_uuid():
     """Generate a UUID string."""
@@ -92,7 +92,7 @@ class L1ClusterDocument(Base):
     
     # Relationships
     cluster = relationship("L1Cluster", back_populates="cluster_documents")
-    document = relationship("Document")
+    document = relationship(Document)
 
     def to_dict(self):
         """Convert to dictionary."""
@@ -184,7 +184,10 @@ class L1GlobalBiography(Base):
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), 
                       onupdate=lambda: datetime.now(timezone.utc))
-    version = Column(Integer, nullable=False)
+    version = Column(Integer, ForeignKey("l1_versions.version"), nullable=False)
+    
+    # Add relationship to version_info
+    version_info = relationship("L1Version", back_populates="global_biographies")
     
     def to_dict(self):
         """Convert to dictionary."""
@@ -213,6 +216,10 @@ class L1StatusBiography(Base):
     summary = Column(Text, nullable=False)
     summary_third_view = Column(Text, nullable=False)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    version = Column(Integer, ForeignKey("l1_versions.version"), nullable=True)
+    
+    # Add relationship to version_info
+    version_info = relationship("L1Version", back_populates="status_biographies")
     
     def to_dict(self):
         """Convert to dictionary."""
@@ -223,7 +230,8 @@ class L1StatusBiography(Base):
             "content_third_view": self.content_third_view,
             "summary": self.summary,
             "summary_third_view": self.summary_third_view,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "version": self.version
         }
 
 
@@ -240,7 +248,8 @@ class L1Version(Base):
     error = Column(Text, nullable=True)
     
     # Relationships to other L1 entities
-    global_biographies = relationship("L1GlobalBiography", backref="version_info")
+    global_biographies = relationship("L1GlobalBiography", back_populates="version_info")
+    status_biographies = relationship("L1StatusBiography", back_populates="version_info")
     clusters = relationship("L1Cluster", back_populates="version_info")
     shades = relationship("L1Shade", back_populates="version_info")
     topics = relationship("L1Topic", back_populates="version_info")
