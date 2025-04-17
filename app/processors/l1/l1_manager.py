@@ -347,26 +347,41 @@ class L1Manager:
                         str(m.get("memoryId")) for m in cluster.get("memoryList", [])
                     ]
                     
-                    from app.models.l1.topic import Cluster
+                    from app.models.l1.topic import Cluster, Memory
+                    
+                    # Create Memory objects from document IDs
+                    memory_list = []
+                    for memory_data in cluster.get("memoryList", []):
+                        memory_id = str(memory_data.get("memoryId"))
+                        memory_embedding = memory_data.get("embedding")
+                        memory = Memory(
+                            memory_id=memory_id,
+                            embedding=memory_embedding
+                        )
+                        memory_list.append(memory)
+                    
+                    # Create the Cluster with supported parameters
                     cluster_model = Cluster(
                         id=cluster_id,
                         name=cluster_name,
                         center_embedding=center_embedding,
-                        user_id=user_id, # Add user_id
-                        document_ids=document_ids # Add document_ids
+                        memory_list=memory_list,
+                        metadata={"tags": cluster.get("tags", []), "version": new_version}
                     )
 
                     # Store in Wasabi (object storage)
                     cluster_s3_path =self.wasabi_adapter.store_cluster(
                         user_id=user_id,
-                        cluster=cluster_model
+                        cluster=cluster_model,
+                        version=new_version
                     )
                     logger.info(f"Stored cluster in Wasabi at {cluster_s3_path}")
 
                     # Store in Weaviate (vector DB), cluster_model already has the s3 path
                     self.weaviate_adapter.add_cluster(
                         user_id=user_id,
-                        cluster=cluster_model
+                        cluster=cluster_model,
+                        version=new_version
                     )
                     
                     # Store in PostgreSQL (metadata DB), cluster_model already has the s3 path
@@ -414,7 +429,8 @@ class L1Manager:
                         summary=shade.get("summary"),
                         confidence=shade.get("confidence"),
                         source_clusters=shade.get("source_clusters", []),
-                        version=new_version
+                        version=new_version,
+                        s3_path=shade_s3_path
                     )
             
             # 5. Store biography in PostgreSQL and Wasabi

@@ -106,13 +106,14 @@ class WeaviateAdapter:
     #         logger.error(f"Error adding topic to Weaviate: {e}")
     #         raise
     
-    def add_cluster(self, user_id: str, cluster: Cluster) -> str:
+    def add_cluster(self, user_id: str, cluster: Cluster, version: int = None) -> str:
         """
         Add a Cluster domain model to Weaviate.
         
         Args:
             user_id: User ID.
             cluster: Cluster domain model.
+            version: Optional version number.
             
         Returns:
             Weaviate UUID of the created object.
@@ -130,16 +131,54 @@ class WeaviateAdapter:
             "s3_path": cluster.s3_path or ""
         }
         
+        # Add version to properties if provided
+        if version is not None:
+            properties["version"] = version
+        
         if cluster.metadata:
             properties["metadata"] = json.dumps(cluster.metadata)
         
         try:
-            self.client.data_object.create(
-                properties,
-                CLUSTERS_COLLECTION,
-                object_uuid,
-                vector=cluster.center_embedding or []
-            )
+            # Get the collection
+            collection = self.client.collections.get(CLUSTERS_COLLECTION)
+            
+            # Make sure the embedding vector is properly formatted
+            vector = cluster.center_embedding or []
+            
+            # Create the object with tenant specified
+            try:
+                # First get a tenant-specific collection object
+                tenant_collection = collection.with_tenant(user_id)
+                
+                # Now insert using the tenant-specific collection
+                tenant_collection.data.insert(
+                    uuid=object_uuid,
+                    properties=properties,
+                    vector=vector
+                )
+                logger.info(f"Added cluster {cluster.id} with tenant {user_id}")
+            except AttributeError as e:
+                # If that fails, try alternative methods
+                logger.warning(f"Error using tenant-specific insert: {e}")
+                logger.info("Using alternative insert method for Weaviate v4")
+                
+                if hasattr(collection, "objects"):
+                    # Some versions use objects.create with tenant parameter
+                    collection.objects.create(
+                        uuid=object_uuid,
+                        properties=properties,
+                        vector=vector,
+                        tenant=user_id
+                    )
+                else:
+                    # Add tenant to properties as a fallback
+                    properties["_tenant"] = user_id
+                    collection.data.insert(
+                        uuid=object_uuid,
+                        properties=properties,
+                        vector=vector
+                    )
+            
             return object_uuid
         except Exception as e:
             logger.error(f"Error adding cluster to Weaviate: {e}")
@@ -290,6 +329,7 @@ class WeaviateAdapter:
     
     def search_clusters(self, user_id: str, query_embedding: List[float], 
                        topic_id: Optional[str] = None, 
+                       version: Optional[int] = None,
                        limit: int = 10) -> List[Dict[str, Any]]:
         """
         Search for clusters by similarity.
@@ -298,12 +338,71 @@ class WeaviateAdapter:
             user_id: User ID.
             query_embedding: Query vector embedding.
             topic_id: Optional topic ID to filter clusters.
+            version: Optional version number to filter by.
             limit: Maximum number of results.
             
         Returns:
             List of matching clusters with similarity score.
         """
         try:
+            # Try to use Weaviate v4 API with tenant
+            try:
+                # Get collection with tenant
+                collection = self.client.collections.get(CLUSTERS_COLLECTION)
+                tenant_collection = collection.with_tenant(user_id)
+                
+                # Build filter
+                filters = None
+                if topic_id:
+                    # Filter by topic
+                    filters = Filter.by_property("topic_id").equal(topic_id)
+                
+                if version is not None:
+                    # Add version filter
+                    version_filter = Filter.by_property("version").equal(version)
+                    if filters:
+                        filters = filters.and_filter(version_filter)
+                    else:
+                        filters = version_filter
+                
+                # Execute query
+                result = tenant_collection.query.near_vector(
+                    vector=query_embedding,
+                    limit=limit,
+                    filters=filters,
+                    return_properties=["cluster_id", "topic_id", "name", "summary", "s3_path", "version", "metadata"],
+                    include_vector=False
+                )
+                
+                # Process results
+                clusters = []
+                for obj in result.objects:
+                    cluster = {
+                        "cluster_id": obj.properties.get("cluster_id"),
+                        "topic_id": obj.properties.get("topic_id"),
+                        "name": obj.properties.get("name"),
+                        "summary": obj.properties.get("summary"),
+                        "s3_path": obj.properties.get("s3_path"),
+                        "version": obj.properties.get("version"),
+                        "certainty": obj.metadata.certainty if hasattr(obj, "metadata") and hasattr(obj.metadata, "certainty") else None
+                    }
+                    
+                    # Parse metadata if available
+                    metadata_str = obj.properties.get("metadata")
+                    if metadata_str:
+                        try:
+                            cluster["metadata"] = json.loads(metadata_str)
+                        except:
+                            cluster["metadata"] = {}
+                    
+                    clusters.append(cluster)
+                
+                return clusters
+                
+            except (AttributeError, ImportError) as e:
+                # Fall back to legacy API method
+                logger.warning(f"Error using v4 API search, falling back to legacy mode: {e}")
+                
             # Build where filter
             where_filter = {
                 "operator": "And",
@@ -323,10 +422,18 @@ class WeaviateAdapter:
                     "operator": "Equal",
                     "valueString": topic_id
                 })
+                    
+                # Add version filter if provided
+                if version is not None:
+                    where_filter["operands"].append({
+                        "path": ["version"],
+                        "operator": "Equal",
+                        "valueNumber": version
+                    })
             
             result = (
                 self.client.query
-                .get(CLUSTERS_COLLECTION, ["user_id", "cluster_id", "topic_id", "name", "summary", "metadata", "s3_path"])
+                    .get(CLUSTERS_COLLECTION, ["user_id", "cluster_id", "topic_id", "name", "summary", "metadata", "s3_path", "version"])
                 .with_where(where_filter)
                 .with_near_vector({
                     "vector": query_embedding,
@@ -347,6 +454,7 @@ class WeaviateAdapter:
                     "name": obj.get("name"),
                     "summary": obj.get("summary"),
                     "s3_path": obj.get("s3_path"),
+                    "version": obj.get("version"),
                     "certainty": obj.get("_additional", {}).get("certainty")
                 }
                 
@@ -650,221 +758,106 @@ class WeaviateAdapter:
     
     def apply_schema(self) -> bool:
         """
-        Apply the Weaviate schema for L1 data.
+        Apply the Weaviate schema for L1 data using Weaviate v4 API.
         
         Returns:
             True if schema was applied successfully, False otherwise.
         """
         try:
-            # Define the schema for L1 data
-            schema = {
-                "classes": [
-                    {
-                        "class": CLUSTERS_COLLECTION,
-                        "description": "L1 Clusters",
-                        "vectorizer": "none",  # Use custom vectors
-                        "properties": [
-                            {
-                                "name": "user_id",
-                                "dataType": ["string"],
-                                "description": "User ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "cluster_id",
-                                "dataType": ["string"],
-                                "description": "Cluster ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "topic_id",
-                                "dataType": ["string"],
-                                "description": "Parent topic ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "name",
-                                "dataType": ["string"],
-                                "description": "Cluster name",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "summary",
-                                "dataType": ["text"],
-                                "description": "Cluster summary",
-                                "indexFilterable": False,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "metadata",
-                                "dataType": ["string"],
-                                "description": "JSON-encoded metadata",
-                                "indexFilterable": False,
-                                "indexSearchable": False
-                            },
-                            {
-                                "name": "s3_path",
-                                "dataType": ["string"],
-                                "description": "Path to full content in Wasabi S3",
-                                "indexFilterable": True,
-                                "indexSearchable": False
-                            }
-                        ]
-                    },
-                    {
-                        "class": TOPICS_COLLECTION,  # UNUSED - Schema kept for compatibility
-                        "description": "L1 Topics - UNUSED - Only defined for schema compatibility",
-                        "vectorizer": "none",  # Use custom vectors
-                        "properties": [
-                            {
-                                "name": "user_id",
-                                "dataType": ["string"],
-                                "description": "User ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "topic_id",
-                                "dataType": ["string"],
-                                "description": "Topic ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "name",
-                                "dataType": ["string"],
-                                "description": "Topic name",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "summary",
-                                "dataType": ["text"],
-                                "description": "Topic summary",
-                                "indexFilterable": False,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "metadata",
-                                "dataType": ["string"],
-                                "description": "JSON-encoded metadata",
-                                "indexFilterable": False,
-                                "indexSearchable": False
-                            }
-                        ]
-                    },
-                    {
-                        "class": SHADES_COLLECTION,  # UNUSED - Schema kept for compatibility
-                        "description": "L1 Shades - UNUSED - Only defined for schema compatibility",
-                        "vectorizer": "none",  # Use custom vectors
-                        "properties": [
-                            {
-                                "name": "user_id",
-                                "dataType": ["string"],
-                                "description": "User ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "shade_id",
-                                "dataType": ["string"],
-                                "description": "Shade ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "name",
-                                "dataType": ["string"],
-                                "description": "Shade name",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "summary",
-                                "dataType": ["text"],
-                                "description": "Shade summary",
-                                "indexFilterable": False,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "confidence",
-                                "dataType": ["number"],
-                                "description": "Confidence score",
-                                "indexFilterable": True,
-                                "indexSearchable": False
-                            },
-                            {
-                                "name": "metadata",
-                                "dataType": ["string"],
-                                "description": "JSON-encoded metadata",
-                                "indexFilterable": False,
-                                "indexSearchable": False
-                            }
-                        ]
-                    },
-                    {
-                        "class": BIOS_COLLECTION,  # UNUSED - Schema kept for compatibility
-                        "description": "L1 Biographies - UNUSED - Only defined for schema compatibility",
-                        "vectorizer": "none",  # Use custom vectors
-                        "properties": [
-                            {
-                                "name": "user_id",
-                                "dataType": ["string"],
-                                "description": "User ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "bio_id",
-                                "dataType": ["string"],
-                                "description": "Biography ID",
-                                "indexFilterable": True,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "content",
-                                "dataType": ["text"],
-                                "description": "Biography content",
-                                "indexFilterable": False,
-                                "indexSearchable": True
-                            },
-                            {
-                                "name": "version",
-                                "dataType": ["number"],
-                                "description": "Version number",
-                                "indexFilterable": True,
-                                "indexSearchable": False
-                            },
-                            {
-                                "name": "metadata",
-                                "dataType": ["string"],
-                                "description": "JSON-encoded metadata",
-                                "indexFilterable": False,
-                                "indexSearchable": False
-                            }
-                        ]
-                    }
-                ]
-            }
+            # First check which collections already exist
+            try:
+                existing_collections = self.client.collections.list_all()
+                logger.info(f"Existing collections: {existing_collections}")
+            except Exception as e:
+                logger.warning(f"Error getting existing collections: {e}")
+                existing_collections = []
             
-            # Check if collections already exist
-            existing_schema = self.client.schema.get()
-            existing_collections = [c["class"] for c in existing_schema["classes"]]
+            # Create TenantCluster collection if it doesn't exist
+            if CLUSTERS_COLLECTION not in existing_collections:
+                logger.info(f"Creating collection {CLUSTERS_COLLECTION}")
+                from weaviate.classes.config import Configure, Property, DataType
+                
+                self.client.collections.create(
+                    name=CLUSTERS_COLLECTION,
+                    description="L1 Clusters",
+                    # Use pre-computed embeddings from OpenAI rather than Weaviate's vectorizer
+                    vectorizer_config=Configure.Vectorizer.none(),
+                    # Enable multi-tenancy
+                    multi_tenancy_config=Configure.multi_tenancy(
+                        enabled=True,
+                        auto_tenant_creation=True
+                    ),
+                    properties=[
+                        Property(
+                            name="user_id",
+                            description="User ID",
+                            data_type=DataType.TEXT,
+                            indexing={"filterable": True, "searchable": True},
+                        ),
+                        Property(
+                            name="cluster_id",
+                            description="Cluster ID",
+                            data_type=DataType.TEXT,
+                            indexing={"filterable": True, "searchable": True},
+                        ),
+                        Property(
+                            name="topic_id",
+                            description="Parent topic ID",
+                            data_type=DataType.TEXT,
+                            indexing={"filterable": True, "searchable": True},
+                        ),
+                        Property(
+                            name="name",
+                            description="Cluster name",
+                            data_type=DataType.TEXT,
+                            indexing={"filterable": True, "searchable": True},
+                        ),
+                        Property(
+                            name="summary",
+                            description="Cluster summary",
+                            data_type=DataType.TEXT,
+                            indexing={"filterable": False, "searchable": True},
+                        ),
+                        Property(
+                            name="metadata",
+                            description="JSON-encoded metadata",
+                            data_type=DataType.TEXT,
+                            indexing={"filterable": False, "searchable": False},
+                        ),
+                        Property(
+                            name="s3_path",
+                            description="Path to full content in Wasabi S3",
+                            data_type=DataType.TEXT,
+                            indexing={"filterable": True, "searchable": False},
+                        ),
+                        Property(
+                            name="version",
+                            description="L1 version number for filtering",
+                            data_type=DataType.NUMBER,
+                            indexing={"filterable": True, "searchable": False},
+                        ),
+                    ]
+                )
+                logger.info(f"Created collection {CLUSTERS_COLLECTION}")
+            else:
+                # If collection exists, check and enable multi-tenancy if not already enabled
+                try:
+                    collection = self.client.collections.get(CLUSTERS_COLLECTION)
+                    
+                    # Check if multi-tenancy is enabled
+                    is_multi_tenant = False
+                    if hasattr(collection, "multi_tenancy_config") and collection.multi_tenancy_config:
+                        is_multi_tenant = collection.multi_tenancy_config.enabled
+                    
+                    if not is_multi_tenant:
+                        logger.warning(f"Collection {CLUSTERS_COLLECTION} exists but multi-tenancy is not enabled.")
+                        logger.info("Unfortunately, multi-tenancy can't be enabled after collection creation.")
+                        logger.info("Consider recreating the collection with multi-tenancy enabled.")
+                except Exception as e:
+                    logger.error(f"Error checking multi-tenancy status: {e}")
             
-            for class_obj in schema["classes"]:
-                class_name = class_obj["class"]
-                
-                if class_name in existing_collections:
-                    logger.info(f"Collection {class_name} already exists, skipping")
-                    continue
-                
-                # Create the class
-                self.client.schema.create_class(class_obj)
-                logger.info(f"Created collection {class_name}")
+            # The other collections (TOPICS_COLLECTION, SHADES_COLLECTION, BIOS_COLLECTION) are unused
+            # but we can create them if needed in the future
             
             return True
         except Exception as e:
@@ -944,6 +937,7 @@ class WeaviateAdapter:
     
     def search_clusters_models(self, user_id: str, query_embedding: List[float], 
                               topic_id: Optional[str] = None, 
+                              version: Optional[int] = None,
                               limit: int = 10) -> List[Cluster]:
         """
         Search for clusters by similarity and return domain models.
@@ -952,12 +946,13 @@ class WeaviateAdapter:
             user_id: User ID.
             query_embedding: Query vector embedding.
             topic_id: Optional topic ID to filter clusters.
+            version: Optional version number to filter clusters.
             limit: Maximum number of results.
             
         Returns:
             List of matching Cluster domain models with similarity score added to metadata.
         """
-        cluster_dicts = self.search_clusters(user_id, query_embedding, topic_id, limit)
+        cluster_dicts = self.search_clusters(user_id, query_embedding, topic_id, version, limit)
         clusters = []
         
         for cluster_dict in cluster_dicts:
@@ -974,11 +969,15 @@ class WeaviateAdapter:
             # Add metadata if available
             if "metadata" in cluster_dict:
                 cluster.metadata = cluster_dict["metadata"]
+            else:
+                cluster.metadata = {}
+                
+            # Add version to metadata if available
+            if "version" in cluster_dict and cluster_dict["version"] is not None:
+                cluster.metadata["version"] = cluster_dict["version"]
                 
             # Add certainty score to metadata
             if "certainty" in cluster_dict:
-                if not cluster.metadata:
-                    cluster.metadata = {}
                 cluster.metadata["certainty"] = cluster_dict["certainty"]
                 
             clusters.append(cluster)
@@ -1222,3 +1221,65 @@ class WeaviateAdapter:
         except Exception as e:
             logger.error(f"Error getting chunk embeddings: {e}")
             return {} 
+
+    def get_schema(self) -> Dict[str, Any]:
+        """
+        Get the current Weaviate schema.
+        
+        Returns:
+            Dictionary with schema information.
+        """
+        try:
+            # In Weaviate v4, we need to build a schema-like structure from collections
+            collections = self.client.collections.list_all()
+            
+            schema = {"classes": []}
+            
+            for collection_name in collections:
+                try:
+                    collection = self.client.collections.get(collection_name)
+                    
+                    # Extract properties without using the properties.get() method
+                    # Instead, we'll use the properties attribute directly
+                    schema_properties = []
+                    
+                    # Check if collection has properties attribute directly
+                    if hasattr(collection, "properties"):
+                        props = collection.properties
+                        for prop in props:
+                            prop_info = {
+                                "name": prop.name,
+                                "description": prop.description,
+                                "dataType": [prop.data_type.value]
+                            }
+                            schema_properties.append(prop_info)
+                    # Otherwise, access the properties from the collection object itself
+                    elif isinstance(collection, dict) and "properties" in collection:
+                        for prop in collection["properties"]:
+                            prop_info = {
+                                "name": prop["name"],
+                                "description": prop.get("description", ""),
+                                "dataType": prop.get("dataType", ["text"])
+                            }
+                            schema_properties.append(prop_info)
+                    # Fall back to direct schema access via HTTP API
+                    else:
+                        logger.info(f"Using alternative method to get properties for {collection_name}")
+                        # Since we're in the adapter, we can't rely on HTTP calls directly
+                        # Instead, will return minimal schema info
+                        schema_properties = []
+                    
+                    # Add collection info to schema
+                    description = getattr(collection, "description", "Collection")
+                    schema["classes"].append({
+                        "class": collection_name,
+                        "description": description,
+                        "properties": schema_properties
+                    })
+                except Exception as e:
+                    logger.error(f"Error getting details for collection {collection_name}: {e}")
+            
+            return schema
+        except Exception as e:
+            logger.error(f"Error getting schema: {e}")
+            return {"classes": []} 

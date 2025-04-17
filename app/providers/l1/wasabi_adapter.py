@@ -198,20 +198,30 @@ class WasabiStorageAdapter:
             return Topic.from_dict(data)
         return None
     
-    def store_cluster(self, user_id: str, cluster: Cluster) -> str:
+    def store_cluster(self, user_id: str, cluster: Cluster, version: int = None) -> str:
         """
         Store a Cluster domain model in Wasabi.
         
         Args:
             user_id: User ID.
             cluster: Cluster domain model.
+            version: Optional version number.
             
         Returns:
             S3 path where the cluster was stored.
         """
         self._validate_model(cluster)
         
-        s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster.id)
+        # If version is provided, include it in the S3 path
+        if version is not None:
+            s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, f"{cluster.id}_v{version}")
+            # Also add version to the metadata if it doesn't exist
+            if cluster.metadata is None:
+                cluster.metadata = {}
+            if "version" not in cluster.metadata:
+                cluster.metadata["version"] = version
+        else:
+            s3_path = self._get_object_key(CLUSTERS_PREFIX, user_id, cluster.id)
         
         # Set the s3_path on the model
         cluster.s3_path = s3_path
