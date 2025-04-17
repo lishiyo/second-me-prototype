@@ -138,50 +138,94 @@ class WeaviateAdapter:
         if cluster.metadata:
             properties["metadata"] = json.dumps(cluster.metadata)
         
+        # Make sure the embedding vector is properly formatted
+        vector = cluster.center_embedding or []
+        
         try:
             # Get the collection
             collection = self.client.collections.get(CLUSTERS_COLLECTION)
             
-            # Make sure the embedding vector is properly formatted
-            vector = cluster.center_embedding or []
-            
-            # Create the object with tenant specified
+            # Try to use tenant-specific collection operations
             try:
                 # First get a tenant-specific collection object
                 tenant_collection = collection.with_tenant(user_id)
                 
-                # Now insert using the tenant-specific collection
-                tenant_collection.data.insert(
-                    uuid=object_uuid,
-                    properties=properties,
-                    vector=vector
-                )
-                logger.info(f"Added cluster {cluster.id} with tenant {user_id}")
-            except AttributeError as e:
-                # If that fails, try alternative methods
-                logger.warning(f"Error using tenant-specific insert: {e}")
-                logger.info("Using alternative insert method for Weaviate v4")
-                
-                if hasattr(collection, "objects"):
-                    # Some versions use objects.create with tenant parameter
-                    collection.objects.create(
-                        uuid=object_uuid,
-                        properties=properties,
-                        vector=vector,
-                        tenant=user_id
-                    )
-                else:
-                    # Add tenant to properties as a fallback
-                    properties["_tenant"] = user_id
-                    collection.data.insert(
+                # Try to replace the object first (update if it exists)
+                try:
+                    tenant_collection.data.replace(
                         uuid=object_uuid,
                         properties=properties,
                         vector=vector
                     )
+                    logger.info(f"Updated existing cluster {cluster.id} with tenant {user_id}")
+                except weaviate.exceptions.WeaviateQueryException as e:
+                    # If the object doesn't exist (404) or other error, try inserting it
+                    if "not found" in str(e).lower() or "404" in str(e):
+                        tenant_collection.data.insert(
+                            uuid=object_uuid,
+                            properties=properties,
+                            vector=vector
+                        )
+                        logger.info(f"Added new cluster {cluster.id} with tenant {user_id}")
+                    else:
+                        # If it's some other error, raise it
+                        raise
+            except AttributeError as e:
+                # If tenant-specific operations fail, try alternative methods
+                logger.warning(f"Error using tenant-specific operations: {e}")
+                logger.info("Using alternative methods for Weaviate v4")
+                
+                if hasattr(collection, "objects"):
+                    # Some versions use objects.create with tenant parameter
+                    try:
+                        # Try replace first
+                        collection.objects.update(
+                            uuid=object_uuid,
+                            properties=properties,
+                            vector=vector,
+                            tenant=user_id
+                        )
+                        logger.info(f"Updated existing cluster {cluster.id} with tenant {user_id}")
+                    except Exception as update_error:
+                        # If update fails, try create
+                        try:
+                            collection.objects.create(
+                                uuid=object_uuid,
+                                properties=properties,
+                                vector=vector,
+                                tenant=user_id
+                            )
+                            logger.info(f"Added new cluster {cluster.id} with tenant {user_id}")
+                        except Exception as create_error:
+                            # If both methods fail, raise the original update error
+                            raise update_error
+                else:
+                    # Add tenant to properties as a fallback
+                    properties["_tenant"] = user_id
+                    try:
+                        # Try replace first
+                        collection.data.replace(
+                            uuid=object_uuid,
+                            properties=properties,
+                            vector=vector
+                        )
+                        logger.info(f"Updated existing cluster {cluster.id}")
+                    except Exception as replace_error:
+                        # If replace fails, try insert
+                        try:
+                            collection.data.insert(
+                                uuid=object_uuid,
+                                properties=properties,
+                                vector=vector
+                            )
+                            logger.info(f"Added new cluster {cluster.id}")
+                        except Exception as insert_error:
+                            # If both fail, raise the original error
+                            raise replace_error
             
             return object_uuid
         except Exception as e:
-            logger.error(f"Error adding cluster to Weaviate: {e}")
+            logger.error(f"Error adding/updating cluster in Weaviate: {e}")
             raise
     
     # def add_shade(self, user_id: str, shade: L1Shade) -> str:
